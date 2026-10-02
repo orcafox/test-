@@ -1,0 +1,454 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Podcast Bareng Cory — Intro</title>
+<style>
+  @font-face { font-family: 'Anton'; src: url('fonts/Anton.ttf'); }
+  @font-face { font-family: 'InterBold'; src: url('fonts/InterBold.ttf'); }
+  @font-face { font-family: 'SerifBI'; src: url('file:///usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf'), local('Liberation Serif Bold Italic'); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+const W = 1920, H = 1080;
+const GREEN = '#00812F', GREEN_D = '#005c21', GREEN_L = '#0aa040';
+// Beat times (seconds) detected from the song with librosa (~99 BPM, double-time grid).
+const B = [0.418, 0.72, 1.022, 1.3, 1.602, 1.927, 2.229, 2.531, 2.856, 3.158, 3.46, 3.762,
+  4.063, 4.365, 4.667, 4.992, 5.294, 5.596, 5.898, 6.2, 6.502, 6.827, 7.152, 7.454, 7.755,
+  8.057, 8.359, 8.661, 8.963, 9.265, 9.567, 9.868, 10.194, 10.495, 10.797, 11.099, 11.401];
+const DURATION = 12.0;
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ---------- math / easing ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, d) => clamp((t - a) / d);
+const lerp = (a, b, k) => a + (b - a) * k;
+const eOut = x => 1 - Math.pow(1 - x, 3);
+const eExpo = x => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const eInOut = x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eBack = x => { const c1 = 2.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const hit = (t, a, k = 10) => (t < a ? 0 : Math.exp(-(t - a) * k));
+function beatPulse(t, from, to, k = 9) {
+  let v = 0;
+  for (const b of B) if (b >= from && b <= to) v = Math.max(v, hit(t, b, k));
+  return v;
+}
+function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
+
+// ---------- grain ----------
+const grains = [];
+(function makeGrain() {
+  const r = rng(7);
+  for (let g = 0; g < 6; g++) {
+    const c = document.createElement('canvas'); c.width = 480; c.height = 270;
+    const x = c.getContext('2d'); const img = x.createImageData(480, 270);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = r() * 255; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+    }
+    x.putImageData(img, 0, 0); grains.push(c);
+  }
+})();
+
+// ---------- drawing helpers ----------
+function bg(c = GREEN) {
+  ctx.fillStyle = c; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, W * 0.75);
+  g.addColorStop(0, 'rgba(255,255,255,0.06)'); g.addColorStop(1, 'rgba(0,0,0,0.22)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+function withT(x, y, rot, sx, sy, fn) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sx, sy === undefined ? sx : sy); fn(); ctx.restore();
+}
+
+function setFont(size, fam = 'Anton') { ctx.font = `${size}px ${fam}`; }
+
+// Black face + white extrusion (or inverted) like the reference typography.
+function text3D(str, x, y, size, o = {}) {
+  const face = o.face || '#000', side = o.side || '#fff', depth = o.depth ?? size * 0.07;
+  const dx = o.dx ?? 0.45, dy = o.dy ?? 1;
+  setFont(size, o.fam || 'Anton'); ctx.textAlign = o.align || 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = size * 0.12; ctx.shadowOffsetY = size * 0.06;
+  ctx.fillStyle = side; ctx.fillText(str, x + depth * dx, y + depth * dy);
+  ctx.restore();
+  ctx.fillStyle = side;
+  for (let d = depth; d > 0; d -= 1.5) ctx.fillText(str, x + d * dx, y + d * dy);
+  ctx.fillStyle = face; ctx.fillText(str, x, y);
+}
+
+function glowText(str, x, y, size, alpha = 1, o = {}) {
+  setFont(size, o.fam || 'Anton'); ctx.textAlign = o.align || 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(255,255,255,0.9)'; ctx.shadowBlur = size * 0.25;
+  ctx.fillText(str, x, y);
+  ctx.shadowBlur = size * 0.08; ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+function label(str, x, y, size, o = {}) {
+  setFont(size, 'InterBold'); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const w = ctx.measureText(str).width, px = size * 0.45, py = size * 0.32;
+  const bw = o.minW ? Math.max(o.minW, w + px * 2) : w + px * 2;
+  ctx.fillStyle = o.bg || '#000'; ctx.fillRect(x, y - size / 2 - py, bw, size + py * 2);
+  ctx.fillStyle = o.fg || '#fff'; ctx.fillText(str, x + px, y + size * 0.04);
+  return bw;
+}
+
+function starburst(x, y, r, n, rot, color = '#000', inner = 0.58) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const a = (i / (n * 2)) * Math.PI * 2, rr = i % 2 === 0 ? r : r * inner;
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+}
+
+function bubblePath(w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(-w / 2 + r, -h / 2);
+  ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+  ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+  ctx.lineTo(-w * 0.12, h / 2);
+  ctx.lineTo(-w * 0.34, h / 2 + h * 0.36);
+  ctx.lineTo(-w * 0.3, h / 2);
+  ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+  ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+  ctx.closePath();
+}
+
+// Layered green 3D speech bubble with white outline (podcast stand-in for the reference heart).
+function bubble3D(x, y, s, rot, dots = [0, 0, 0]) {
+  withT(x, y, rot, s, s, () => {
+    const w = 300, h = 220, r = 70;
+    for (let i = 7; i >= 1; i--) {
+      ctx.save(); ctx.translate(i * 4, i * 5);
+      bubblePath(w, h, r); ctx.fillStyle = i % 2 ? GREEN_D : '#00491a'; ctx.fill(); ctx.restore();
+    }
+    bubblePath(w, h, r); ctx.fillStyle = GREEN_L; ctx.fill();
+    ctx.save(); ctx.shadowColor = 'rgba(255,255,255,0.8)'; ctx.shadowBlur = 18;
+    ctx.lineWidth = 7; ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round'; ctx.stroke(); ctx.restore();
+    for (let i = 0; i < 3; i++) {
+      const lift = dots[i];
+      ctx.beginPath(); ctx.arc(-70 + i * 70, -8 - lift * 18, 20 + lift * 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+    }
+  });
+}
+
+// Black & white "photo" of a studio mic, standing in for the reference portrait.
+function micPhoto(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const g = ctx.createRadialGradient(x + w * 0.5, y + h * 0.35, 20, x + w * 0.5, y + h * 0.45, h * 0.9);
+  g.addColorStop(0, '#8a8a8a'); g.addColorStop(0.5, '#3a3a3a'); g.addColorStop(1, '#0d0d0d');
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  const cx = x + w * 0.5, cy = y + h * 0.52, mw = w * 0.34, mh = h * 0.5;
+  // stand + yoke
+  ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = w * 0.045; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - mw * 0.75, cy - mh * 0.05); ctx.lineTo(cx - mw * 0.75, cy + mh * 0.38);
+  ctx.quadraticCurveTo(cx - mw * 0.75, cy + mh * 0.62, cx, cy + mh * 0.62);
+  ctx.quadraticCurveTo(cx + mw * 0.75, cy + mh * 0.62, cx + mw * 0.75, cy + mh * 0.38);
+  ctx.lineTo(cx + mw * 0.75, cy - mh * 0.05); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy + mh * 0.62); ctx.lineTo(cx, y + h + 10); ctx.stroke();
+  // capsule
+  const hg = ctx.createLinearGradient(cx - mw / 2, 0, cx + mw / 2, 0);
+  hg.addColorStop(0, '#2a2a2a'); hg.addColorStop(0.35, '#d8d8d8'); hg.addColorStop(0.55, '#f4f4f4'); hg.addColorStop(1, '#3a3a3a');
+  ctx.beginPath(); ctx.roundRect(cx - mw / 2, cy - mh / 2, mw, mh, mw / 2); ctx.fillStyle = hg; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2;
+  for (let i = -20; i < 40; i++) { const yy = cy - mh / 2 + i * 9; ctx.beginPath(); ctx.moveTo(cx - mw, yy); ctx.lineTo(cx + mw, yy + 30); ctx.stroke(); }
+  for (let i = -20; i < 40; i++) { const yy = cy - mh / 2 + i * 9; ctx.beginPath(); ctx.moveTo(cx - mw, yy + 30); ctx.lineTo(cx + mw, yy); ctx.stroke(); }
+  ctx.restore();
+  ctx.fillStyle = '#151515'; ctx.fillRect(cx - mw / 2, cy + mh * 0.08, mw, mh * 0.1);
+  ctx.fillStyle = '#9a9a9a'; ctx.fillRect(cx - mw / 2, cy + mh * 0.08, mw, 3);
+  // light flicker for life
+  ctx.fillStyle = `rgba(255,255,255,${0.04 + 0.03 * Math.sin(t * 40)})`; ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+function blurred(px, fn) {
+  if (px < 0.3) { fn(); return; }
+  ctx.save(); ctx.filter = `blur(${px.toFixed(1)}px)`; fn(); ctx.restore();
+}
+
+// Text revealed letter by letter.
+function partial(str, k) { return str.slice(0, Math.ceil(clamp(k) * str.length)); }
+
+// ---------- scenes ----------
+function scene1(t) { // 0 – 2.229 : sparse build-up
+  bg();
+  // drifting blurred labels in the back
+  blurred(10, () => {
+    ctx.globalAlpha = 0.85;
+    const x1 = lerp(-400, 600, eInOut(prog(t, 0.0, 2.2)));
+    label('podcast bareng cory', x1, 210, 44);
+    const x2 = lerp(2000, 1150, eOut(prog(t, B[2], 0.9)));
+    ctx.fillStyle = '#000'; ctx.fillRect(x2, 880, 420, 70);
+    ctx.globalAlpha = 1;
+  });
+  // small label pops on first beat
+  if (t >= B[0]) {
+    const k = eBack(prog(t, B[0], 0.25));
+    withT(1240, 520, -0.04, k, k, () => label('podcast..', 0, 0, 34));
+  }
+  // black bar sweeping
+  if (t >= B[2]) {
+    const k = eExpo(prog(t, B[2], 0.45));
+    blurred((1 - k) * 18, () => { ctx.fillStyle = '#000'; ctx.fillRect(lerp(-500, 80, k), 140, 330, 74); });
+  }
+  if (t >= B[3]) {
+    const k = eBack(prog(t, B[3], 0.25));
+    withT(1260, 580, -0.04, k, k, () => label('bareng', 0, 0, 30));
+  }
+  // big PODCAST, slides in from the right
+  if (t >= B[4]) {
+    const k = eExpo(prog(t, B[4], 0.35));
+    const x = lerp(2300, 1080, k) - (t - B[4]) * 40;
+    blurred((1 - k) * 22, () => withT(x, 380, -0.07, 1, 1, () => {
+      ctx.transform(1, 0, -0.08, 1, 0, 0); text3D('PODCAST,', 0, 0, 210);
+    }));
+  }
+  if (t >= B[5]) {
+    const k = eBack(prog(t, B[5], 0.25));
+    withT(1100, 470, -0.07, k, k, () => label('podcast', 0, 0, 30));
+  }
+}
+
+function scene2(t) { // 2.229 – 4.063 : PODCAST, BARENG slam
+  bg();
+  const pulse = beatPulse(t, B[6], B[11], 10);
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(1 + pulse * 0.03, 1 + pulse * 0.03); ctx.translate(-W / 2, -H / 2);
+  // background blurred elements drifting
+  blurred(9, () => {
+    ctx.fillStyle = '#000'; ctx.fillRect(lerp(-80, 120, prog(t, B[6], 2)), 70, 420, 80);
+    label('ngobrol', lerp(80, 30, prog(t, B[6], 2)), 380, 40);
+    ctx.fillRect(lerp(1700, 1500, prog(t, B[6], 2)), 150, 300, 60);
+  });
+  const baseX = 300, baseY = 650, size = 230;
+  setFont(size); const wP = ctx.measureText('PODCAST, ').width;
+  withT(baseX, baseY, -0.06, 1, 1, () => {
+    ctx.transform(1, 0, -0.08, 1, 0, 0);
+    // PODCAST,
+    { const k = eExpo(prog(t, B[6], 0.22)); const s = lerp(1.35, 1, k);
+      blurred((1 - k) * 14, () => withT(0, 0, 0, s, s, () => text3D('PODCAST,', 0, 0, size))); }
+    // BARENG
+    if (t >= B[8]) { const k = eExpo(prog(t, B[8], 0.2)); const s = lerp(1.5, 1, k);
+      blurred((1 - k) * 14, () => withT(wP, 0, 0, s, s, () => text3D('BARENG', 0, 0, size))); }
+    if (t >= B[7]) { const k = eBack(prog(t, B[7], 0.22)); withT(wP - 150, -size * 0.92, 0, k, k, () => label('podcast..', 0, 0, 26)); }
+    if (t >= B[10]) { const k = eBack(prog(t, B[10], 0.22)); withT(wP + 420, -size * 0.92, 0, k, k, () => label('bareng', 0, 0, 26)); }
+    // small label under first word
+    if (t >= B[6]) { const k = eBack(prog(t, B[6] + 0.08, 0.22)); withT(10, 70, 0, k, k, () => label('podcast..', 0, 0, 30, { minW: 320 })); }
+  });
+  // typewriter caption bottom-right
+  if (t >= B[9]) {
+    const k = prog(t, B[9], 0.45);
+    label(partial('podcast bareng cory', k) + (k < 1 ? '|' : ''), 1080, 880, 54, { minW: 640 });
+  }
+  // small CORY pop on the left
+  if (t >= B[11]) {
+    const k = eBack(prog(t, B[11], 0.2));
+    withT(110, 520, -0.06, k, k, () => glowText('CORY', 0, 0, 90));
+  }
+  ctx.restore();
+}
+
+function scene3(t) { // 4.063 – 4.365 : breath, small glowing CORY
+  bg();
+  const k = eOut(prog(t, B[12], 0.3));
+  const s = lerp(0.9, 1.05, k);
+  withT(W / 2, H / 2 + 40, -0.03, s, s, () => glowText('CORY', 0, 0, 120, 1, { align: 'center' }));
+}
+
+function scene4(t) { // 4.365 – 6.502 : collage build, one layer per beat
+  bg();
+  const pulse = beatPulse(t, B[13], B[19], 9);
+  const out = eInOut(prog(t, B[19], 0.3));
+  const gs = 1 + pulse * 0.04 + out * 0.5;
+  const shake = pulse * 8;
+  ctx.save();
+  ctx.translate(W / 2 + Math.sin(t * 53) * shake, H / 2 + Math.cos(t * 41) * shake);
+  ctx.rotate(-0.02 + pulse * 0.01 + out * 0.08); ctx.scale(gs, gs); ctx.translate(-W / 2, -H / 2);
+  ctx.globalAlpha = 1 - out;
+  blurred(out * 25, () => {
+    // L1 giant black CORY + white slab with PODCAST
+    { const k = eExpo(prog(t, B[13], 0.25));
+      blurred((1 - k) * 20, () => {
+        withT(lerp(-900, -60, k), 1060, -0.03, 1, 1, () => { ctx.fillStyle = '#000'; setFont(860); ctx.textAlign = 'left'; ctx.fillText('CORY', 0, 0); });
+      });
+      const k2 = eExpo(prog(t, B[13] + 0.06, 0.25));
+      withT(lerp(2400, 0, k2), 70, -0.035, 1, 1, () => {
+        ctx.fillStyle = '#fff'; ctx.fillRect(-100, 0, 2300, 240);
+        setFont(230); ctx.fillStyle = GREEN; ctx.textAlign = 'left'; ctx.fillText('PODCAST PODCAST PODCAST', 40, 222);
+        label('pod', 520, 70, 26); label('cast', 640, 70, 26);
+      });
+    }
+    // L2 white 3D BARENG
+    if (t >= B[14]) { const k = eExpo(prog(t, B[14], 0.2)); const s = lerp(1.6, 1, k);
+      blurred((1 - k) * 16, () => withT(640, 700, -0.05, s, s, () => { ctx.transform(1, 0, -0.1, 1, 0, 0); text3D('BARENG', 0, 0, 330, { face: '#fff', side: '#000' }); })); }
+    // L3 starburst + boxed CORY
+    if (t >= B[15]) { const k = eBack(prog(t, B[15], 0.25));
+      starburst(1660, 300, 190 * k, 14, t * 1.5, '#000');
+      const k2 = eBack(prog(t, B[15] + 0.05, 0.25));
+      withT(1450, 860, -0.1, k2, k2, () => {
+        ctx.fillStyle = '#fff'; ctx.fillRect(-20, -230, 420, 270);
+        setFont(220); ctx.fillStyle = '#000'; ctx.textAlign = 'left'; ctx.fillText('CORY', 10, 20);
+      });
+    }
+    // L4 serif accent + small star
+    if (t >= B[16]) { const k = eBack(prog(t, B[16], 0.25));
+      withT(380, 990, -0.04, k, k, () => {
+        setFont(170, 'SerifBI'); ctx.textAlign = 'left';
+        ctx.lineWidth = 10; ctx.strokeStyle = '#000'; ctx.strokeText('bareng', 0, 0);
+        ctx.fillStyle = '#fff'; ctx.fillText('bareng', 0, 0);
+      });
+      starburst(950, 950, 70 * k, 9, -t * 2, '#000');
+    }
+    // L5 labels
+    if (t >= B[17]) {
+      const k = eBack(prog(t, B[17], 0.22)); withT(1180, 395, -0.04, k, k, () => label('ep. 01', 0, 0, 34));
+      const k2 = eBack(prog(t, B[17] + 0.08, 0.22)); withT(250, 400, -0.04, k2, k2, () => label('bareng cory', 0, 0, 34));
+    }
+    // L6 outlined CORY sweeping across
+    if (t >= B[18]) { const k = eExpo(prog(t, B[18], 0.3));
+      withT(lerp(2300, 980, k), 1065, -0.03, 1, 1, () => {
+        setFont(170); ctx.textAlign = 'left'; ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText('BARENG CORY', 0, 0);
+      });
+    }
+  });
+  ctx.restore();
+}
+
+function scene5(t) { // 6.502 – 7.152 : black square that grows into the frame
+  bg();
+  const k0 = eBack(prog(t, B[20], 0.18));
+  if (t < B[21]) {
+    const s = 56 * k0; ctx.fillStyle = '#000'; ctx.fillRect(W / 2 - s / 2, H / 2 - s / 2, s, s);
+    return;
+  }
+  const k = eExpo(prog(t, B[21], 0.3));
+  drawCard(t, lerp(0.09, 1, k), lerp(0, -0.05, k), k);
+}
+
+const CARD_W = 620, CARD_H = 760;
+function drawCard(t, s, rot, fill) {
+  withT(W / 2, H / 2 + 10, rot, s, s, () => {
+    const w = CARD_W, h = CARD_H;
+    ctx.fillStyle = '#000'; ctx.fillRect(-w / 2 - 50, -h / 2 - 50, w + 100, h + 100);
+    if (fill <= 0) return;
+    ctx.globalAlpha = clamp(fill * 1.5);
+    ctx.fillStyle = '#fff'; ctx.fillRect(-w / 2 - 22, -h / 2 - 22, w + 44, h + 44);
+    ctx.fillStyle = GREEN; ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = '#000'; ctx.fillRect(-w / 2 + 50, -h / 2 + 60, w - 100, h - 150);
+    micPhoto(-w / 2 + 62, -h / 2 + 72, w - 124, h - 174, t);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function scene6(t) { // 7.152 – 9.265 : framed card with stacked title
+  bg();
+  const pulse = beatPulse(t, B[22], B[28], 9);
+  // big white outlines behind
+  withT(W / 2, H / 2, 0.06 - (t - B[22]) * 0.03, 1.15 + (t - B[22]) * 0.05, undefined, () => {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 70;
+    ctx.strokeRect(-560, -470, 1120, 940);
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.strokeRect(-860, -380, 300, 520); ctx.strokeRect(600, -200, 340, 600);
+  });
+  const zoomIn = eInOut(prog(t, B[28], 0.5));
+  const s = 1 + (t - B[22]) * 0.03 + pulse * 0.03 + zoomIn * 0.22;
+  const rot = lerp(-0.05, 0.02, prog(t, B[22], 2.1));
+  drawCard(t, s, rot, 1);
+  withT(W / 2, H / 2 + 10, rot, s, s, () => {
+    const L = -CARD_W / 2 + 40, T = -CARD_H / 2;
+    // starburst on the corner
+    { const k = eBack(prog(t, B[22], 0.25)); starburst(-CARD_W / 2 - 10, T + 70, 85 * k, 12, t * 1.2, '#000'); }
+    const line = (str, y, size, beat) => {
+      if (t < beat) return;
+      const k = eExpo(prog(t, beat, 0.2)), sc = lerp(1.4, 1, k);
+      blurred((1 - k) * 10, () => withT(L, y, -0.03, sc, sc, () => text3D(str, 0, 0, size, { face: '#fff', side: '#000', depth: size * 0.06 })));
+    };
+    line('PODCAST,', T + 200, 150, B[22]);
+    line('BARENG', T + 340, 150, B[24]);
+    line('CORY', T + 600, 260, B[26]);
+    if (t >= B[23]) { const k = eBack(prog(t, B[23], 0.22)); withT(L + 330, T + 70, -0.03, k, k, () => label('podcast..', 0, 0, 22)); }
+    // outlined bubble doodle on the right edge
+    if (t >= B[25]) { const k = eBack(prog(t, B[25], 0.3));
+      withT(CARD_W / 2 + 10, T + 330, 0.25 + Math.sin(t * 6) * 0.05, k * 0.45, undefined, () => {
+        bubblePath(300, 220, 70); ctx.lineWidth = 16; ctx.strokeStyle = '#fff'; ctx.stroke();
+      });
+    }
+  });
+}
+
+function scene7(t) { // 9.265 – 12 : glowing stacked tagline + speech bubble, then fade
+  bg();
+  const fadeOut = eInOut(prog(t, 11.0, 0.9));
+  const pulse = beatPulse(t, B[29], B[34], 8);
+  const x = 360, y0 = 420, size = 200, lh = 182;
+  ctx.save();
+  ctx.globalAlpha = 1 - fadeOut;
+  const gs = 1 + pulse * 0.015 + (t - B[29]) * 0.012;
+  ctx.translate(W / 2, H / 2); ctx.scale(gs, gs); ctx.translate(-W / 2, -H / 2);
+  const word = (str, wx, wy, beat) => {
+    if (t < beat) return;
+    const k = prog(t, beat, 0.14);
+    const yy = wy + (1 - eOut(prog(t, beat, 0.2))) * 30;
+    glowText(partial(str, k), wx, yy, size);
+  };
+  word('NGOBROLIN', x, y0, B[29]);
+  word('APAPUN', x, y0 + lh, B[30]);
+  word('TANPA', x, y0 + lh * 2, B[31]);
+  setFont(size); const wT = ctx.measureText('TANPA ').width;
+  word('HENTI', x + wT, y0 + lh * 2, B[32]);
+  if (t >= B[33]) {
+    const k = eBack(prog(t, B[33], 0.35));
+    const dots = [B[34], B[35], B[36]].map(b => hit(t, b, 7));
+    bubble3D(1560, 540, k * 1.1, -0.12 + Math.sin(t * 3) * 0.03, dots);
+  }
+  if (t >= B[34]) {
+    const k = eBack(prog(t, B[34], 0.25));
+    withT(x + 4, y0 + lh * 2 + 90, 0, k, k, () => label('podcast bareng cory', 0, 0, 34));
+  }
+  ctx.restore();
+}
+
+function render(t) {
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+  if (t < B[6]) scene1(t);
+  else if (t < B[12]) scene2(t);
+  else if (t < B[13]) scene3(t);
+  else if (t < B[20]) scene4(t);
+  else if (t < B[22]) scene5(t);
+  else if (t < B[29]) scene6(t);
+  else scene7(t);
+  ctx.restore();
+  // film grain
+  ctx.save(); ctx.globalAlpha = 0.07; ctx.globalCompositeOperation = 'overlay';
+  ctx.drawImage(grains[Math.floor(t * 24) % grains.length], 0, 0, W, H); ctx.restore();
+  // fade to black at the very end
+  const fb = eInOut(prog(t, 11.35, 0.65));
+  if (fb > 0) { ctx.fillStyle = `rgba(0,0,0,${fb})`; ctx.fillRect(0, 0, W, H); }
+}
+
+window.render = render;
+window.DURATION = DURATION;
+window.ready = document.fonts.load('100px Anton').then(() => document.fonts.load('40px InterBold'))
+  .then(() => document.fonts.load('100px SerifBI')).then(() => { render(0); return true; });
+
+// live preview when opened directly in a browser
+if (!navigator.webdriver) {
+  window.ready.then(() => {
+    const start = performance.now();
+    (function loop() { render(((performance.now() - start) / 1000) % DURATION); requestAnimationFrame(loop); })();
+  });
+}
+</script>
+</body>
+</html>
