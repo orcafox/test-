@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Podcast Bareng Cory — Intro</title>
+<title>PORI Podcast Intro</title>
 <style>
   @font-face { font-family: 'Anton'; src: url('fonts/Anton.ttf'); }
   @font-face { font-family: 'InterBold'; src: url('fonts/InterBold.ttf'); }
@@ -187,7 +187,7 @@ function scene1(t) { // 0 – 2.229 : sparse build-up
   blurred(10, () => {
     ctx.globalAlpha = 0.85;
     const x1 = lerp(-400, 600, eInOut(prog(t, 0.0, 2.2)));
-    label('podcast bareng cory', x1, 210, 44);
+    label('podcast bareng khori', x1, 210, 44);
     const x2 = lerp(2000, 1150, eOut(prog(t, B[2], 0.9)));
     ctx.fillStyle = '#000'; ctx.fillRect(x2, 880, 420, 70);
     ctx.globalAlpha = 1;
@@ -211,16 +211,16 @@ function scene1(t) { // 0 – 2.229 : sparse build-up
     const k = eExpo(prog(t, B[4], 0.35));
     const x = lerp(2300, 1080, k) - (t - B[4]) * 40;
     blurred((1 - k) * 22, () => withT(x, 380, -0.07, 1, 1, () => {
-      ctx.transform(1, 0, -0.08, 1, 0, 0); text3D('PODCAST,', 0, 0, 210);
+      ctx.transform(1, 0, -0.08, 1, 0, 0); text3D('PORI', 0, 0, 230);
     }));
   }
   if (t >= B[5]) {
     const k = eBack(prog(t, B[5], 0.25));
-    withT(1100, 470, -0.07, k, k, () => label('podcast', 0, 0, 30));
+    withT(1100, 470, -0.07, k, k, () => label('pori..', 0, 0, 30));
   }
 }
 
-function scene2(t) { // 2.229 – 4.063 : PODCAST, BARENG slam
+function scene2(t) { // 2.229 – 4.063 : PORI title slam
   bg();
   const pulse = beatPulse(t, B[6], B[11], 10);
   ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(1 + pulse * 0.03, 1 + pulse * 0.03); ctx.translate(-W / 2, -H / 2);
@@ -230,39 +230,43 @@ function scene2(t) { // 2.229 – 4.063 : PODCAST, BARENG slam
     label('ngobrol', lerp(80, 30, prog(t, B[6], 2)), 380, 40);
     ctx.fillRect(lerp(1700, 1500, prog(t, B[6], 2)), 150, 300, 60);
   });
-  const baseX = 300, baseY = 650, size = 230;
-  setFont(size); const wP = ctx.measureText('PODCAST, ').width;
+  const size = 400, baseY = 700;
+  setFont(size); const wT = ctx.measureText('PORI').width;
+  const baseX = W / 2 - wT / 2 + 40;
+  // starburst behind the title
+  if (t >= B[8]) { const k = eBack(prog(t, B[8], 0.25)); starburst(baseX + wT + 30, baseY - size * 0.8, 120 * k, 12, t * 1.4, '#000'); }
   withT(baseX, baseY, -0.06, 1, 1, () => {
     ctx.transform(1, 0, -0.08, 1, 0, 0);
-    // PODCAST,
+    // outline echo bursting out of the title
+    if (t >= B[8]) { const k = eOut(prog(t, B[8], 0.5)), s = 1 + k * 0.35;
+      ctx.save(); ctx.globalAlpha = 1 - k;
+      withT(wT / 2, -size * 0.36, 0, s, s, () => { setFont(size); ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText('PORI', 0, size * 0.36); });
+      ctx.restore(); }
+    // PORI
     { const k = eExpo(prog(t, B[6], 0.22)); const s = lerp(1.35, 1, k);
-      blurred((1 - k) * 14, () => withT(0, 0, 0, s, s, () => text3D('PODCAST,', 0, 0, size))); }
-    // BARENG
-    if (t >= B[8]) { const k = eExpo(prog(t, B[8], 0.2)); const s = lerp(1.5, 1, k);
-      blurred((1 - k) * 14, () => withT(wP, 0, 0, s, s, () => text3D('BARENG', 0, 0, size))); }
-    if (t >= B[7]) { const k = eBack(prog(t, B[7], 0.22)); withT(wP - 150, -size * 0.92, 0, k, k, () => label('podcast..', 0, 0, 26)); }
-    if (t >= B[10]) { const k = eBack(prog(t, B[10], 0.22)); withT(wP + 420, -size * 0.92, 0, k, k, () => label('bareng', 0, 0, 26)); }
-    // small label under first word
-    if (t >= B[6]) { const k = eBack(prog(t, B[6] + 0.08, 0.22)); withT(10, 70, 0, k, k, () => label('podcast..', 0, 0, 30, { minW: 320 })); }
+      blurred((1 - k) * 14, () => withT(0, 0, 0, s, s, () => text3D('PORI', 0, 0, size))); }
+    if (t >= B[6]) { const k = eBack(prog(t, B[6] + 0.08, 0.22)); withT(10, 80, 0, k, k, () => label('podcast..', 0, 0, 30, { minW: 320 })); }
+    if (t >= B[7]) { const k = eBack(prog(t, B[7], 0.22)); withT(0, -size * 0.9, 0, k, k, () => label('pori..', 0, 0, 26)); }
+    if (t >= B[10]) { const k = eBack(prog(t, B[10], 0.22)); withT(wT - 130, -size * 0.9, 0, k, k, () => label('ep. 01', 0, 0, 26)); }
   });
   // typewriter caption bottom-right
   if (t >= B[9]) {
     const k = prog(t, B[9], 0.45);
-    label(partial('podcast bareng cory', k) + (k < 1 ? '|' : ''), 1080, 880, 54, { minW: 640 });
+    label(partial('podcast bareng khori', k) + (k < 1 ? '|' : ''), 1080, 900, 54, { minW: 660 });
   }
-  // small CORY pop on the left
+  // small PODCAST pop on the left
   if (t >= B[11]) {
     const k = eBack(prog(t, B[11], 0.2));
-    withT(110, 520, -0.06, k, k, () => glowText('CORY', 0, 0, 90));
+    withT(110, 660, -0.06, k, k, () => glowText('PODCAST', 0, 0, 80));
   }
   ctx.restore();
 }
 
-function scene3(t) { // 4.063 – 4.365 : breath, small glowing CORY
+function scene3(t) { // 4.063 – 4.365 : breath, small glowing PODCAST
   bg();
   const k = eOut(prog(t, B[12], 0.3));
   const s = lerp(0.9, 1.05, k);
-  withT(W / 2, H / 2 + 40, -0.03, s, s, () => glowText('CORY', 0, 0, 120, 1, { align: 'center' }));
+  withT(W / 2, H / 2 + 40, -0.03, s, s, () => glowText('PODCAST', 0, 0, 120, 1, { align: 'center' }));
 }
 
 function scene4(t) { // 4.365 – 6.502 : collage build, one layer per beat
@@ -276,10 +280,10 @@ function scene4(t) { // 4.365 – 6.502 : collage build, one layer per beat
   ctx.rotate(-0.02 + pulse * 0.01 + out * 0.08); ctx.scale(gs, gs); ctx.translate(-W / 2, -H / 2);
   ctx.globalAlpha = 1 - out;
   blurred(out * 25, () => {
-    // L1 giant black CORY + white slab with PODCAST
+    // L1 giant black KHORI + white slab with PODCAST
     { const k = eExpo(prog(t, B[13], 0.25));
       blurred((1 - k) * 20, () => {
-        withT(lerp(-900, -60, k), 1060, -0.03, 1, 1, () => { ctx.fillStyle = '#000'; setFont(860); ctx.textAlign = 'left'; ctx.fillText('CORY', 0, 0); });
+        withT(lerp(-900, -60, k), 1060, -0.03, 1, 1, () => { ctx.fillStyle = '#000'; setFont(860); ctx.textAlign = 'left'; ctx.fillText('KHORI', 0, 0); });
       });
       const k2 = eExpo(prog(t, B[13] + 0.06, 0.25));
       withT(lerp(2400, 0, k2), 70, -0.035, 1, 1, () => {
@@ -291,13 +295,14 @@ function scene4(t) { // 4.365 – 6.502 : collage build, one layer per beat
     // L2 white 3D BARENG
     if (t >= B[14]) { const k = eExpo(prog(t, B[14], 0.2)); const s = lerp(1.6, 1, k);
       blurred((1 - k) * 16, () => withT(640, 700, -0.05, s, s, () => { ctx.transform(1, 0, -0.1, 1, 0, 0); text3D('BARENG', 0, 0, 330, { face: '#fff', side: '#000' }); })); }
-    // L3 starburst + boxed CORY
+    // L3 starburst + boxed KHORI
     if (t >= B[15]) { const k = eBack(prog(t, B[15], 0.25));
       starburst(1660, 300, 190 * k, 14, t * 1.5, '#000');
       const k2 = eBack(prog(t, B[15] + 0.05, 0.25));
-      withT(1450, 860, -0.1, k2, k2, () => {
-        ctx.fillStyle = '#fff'; ctx.fillRect(-20, -230, 420, 270);
-        setFont(220); ctx.fillStyle = '#000'; ctx.textAlign = 'left'; ctx.fillText('CORY', 10, 20);
+      withT(1360, 860, -0.1, k2, k2, () => {
+        setFont(200); const bw = ctx.measureText('KHORI').width;
+        ctx.fillStyle = '#fff'; ctx.fillRect(-20, -210, bw + 50, 250);
+        ctx.fillStyle = '#000'; ctx.textAlign = 'left'; ctx.fillText('KHORI', 10, 20);
       });
     }
     // L4 serif accent + small star
@@ -312,12 +317,12 @@ function scene4(t) { // 4.365 – 6.502 : collage build, one layer per beat
     // L5 labels
     if (t >= B[17]) {
       const k = eBack(prog(t, B[17], 0.22)); withT(1180, 395, -0.04, k, k, () => label('ep. 01', 0, 0, 34));
-      const k2 = eBack(prog(t, B[17] + 0.08, 0.22)); withT(250, 400, -0.04, k2, k2, () => label('bareng cory', 0, 0, 34));
+      const k2 = eBack(prog(t, B[17] + 0.08, 0.22)); withT(250, 400, -0.04, k2, k2, () => label('bareng khori', 0, 0, 34));
     }
-    // L6 outlined CORY sweeping across
+    // L6 outlined BARENG KHORI sweeping across
     if (t >= B[18]) { const k = eExpo(prog(t, B[18], 0.3));
       withT(lerp(2300, 980, k), 1065, -0.03, 1, 1, () => {
-        setFont(170); ctx.textAlign = 'left'; ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText('BARENG CORY', 0, 0);
+        setFont(150); ctx.textAlign = 'left'; ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText('BARENG KHORI', 0, 0);
       });
     }
   });
@@ -371,11 +376,12 @@ function scene6(t) { // 7.152 – 9.265 : framed card with stacked title
     const line = (str, y, size, beat) => {
       if (t < beat) return;
       const k = eExpo(prog(t, beat, 0.2)), sc = lerp(1.4, 1, k);
-      blurred((1 - k) * 10, () => withT(L, y, -0.03, sc, sc, () => text3D(str, 0, 0, size, { face: '#fff', side: '#000', depth: size * 0.06 })));
+      setFont(size); const fit = Math.min(size, size * (CARD_W - 90) / ctx.measureText(str).width);
+      blurred((1 - k) * 10, () => withT(L, y, -0.03, sc, sc, () => text3D(str, 0, 0, fit, { face: '#fff', side: '#000', depth: size * 0.06 })));
     };
     line('PODCAST,', T + 200, 150, B[22]);
     line('BARENG', T + 340, 150, B[24]);
-    line('CORY', T + 600, 260, B[26]);
+    line('KHORI', T + 600, 260, B[26]);
     if (t >= B[23]) { const k = eBack(prog(t, B[23], 0.22)); withT(L + 330, T + 70, -0.03, k, k, () => label('podcast..', 0, 0, 22)); }
     // outlined bubble doodle on the right edge
     if (t >= B[25]) { const k = eBack(prog(t, B[25], 0.3));
@@ -413,7 +419,7 @@ function scene7(t) { // 9.265 – 12 : glowing stacked tagline + speech bubble, 
   }
   if (t >= B[34]) {
     const k = eBack(prog(t, B[34], 0.25));
-    withT(x + 4, y0 + lh * 2 + 90, 0, k, k, () => label('podcast bareng cory', 0, 0, 34));
+    withT(x + 4, y0 + lh * 2 + 90, 0, k, k, () => label('podcast bareng khori', 0, 0, 34));
   }
   ctx.restore();
 }
