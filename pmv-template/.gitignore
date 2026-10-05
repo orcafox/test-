@@ -1,0 +1,7 @@
+ph/
+node_modules
+preview/
+frames/
+*.mp4
+*.wav
+*.mp3

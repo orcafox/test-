@@ -1,0 +1,319 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: 'Six'; src: url('fonts/six-caps-latin-400-normal.woff2'); }
+@font-face { font-family: 'League'; src: url('fonts/league-gothic-latin-400-normal.woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 700; src: url('fonts/inter-latin-700-normal.woff2'); }
+html, body { margin: 0; background: #000; }
+</style></head>
+<body><canvas id="c" width="1440" height="1080"></canvas>
+<script>
+const W = 1440, H = 1080, DURATION = 37.6, SUB = 3, SHUTTER = 1 / 75;
+const out = document.getElementById('c'), octx = out.getContext('2d');
+const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+const bufA = mk(), bufB = mk(), work = mk();
+let ctx = work.getContext('2d');
+const RED = '#e10600', BLK = '#0d0d0d', WHT = '#efefef', GRY = '#c4c4c4';
+const B = [0.14, 0.77, 1.37, 1.9, 2.44, 2.95, 3.48, 3.99, 4.53, 5.04, 5.55, 6.06, 6.59, 7.13, 7.64, 8.17, 8.71, 9.22, 9.73, 10.26, 10.8, 11.33, 11.84, 12.35, 12.89, 13.37, 13.89, 14.44, 14.95, 15.49, 16.02, 16.51, 17.02, 17.55, 18.07, 18.6, 19.13, 19.67, 20.18, 20.69, 21.22, 21.73, 22.27, 22.8, 23.31, 23.82, 24.36, 24.89, 25.4, 25.91, 26.45, 26.96, 27.47, 27.98, 28.51, 29.05, 29.56, 30.09, 30.6, 31.14, 31.74, 32.35, 32.93, 33.46, 33.99, 34.5, 35.04, 35.57, 36.08, 36.62, 37.13];
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const pr = (t, a, d) => clamp((t - a) / d);
+const lerp = (a, b, k) => a + (b - a) * k;
+const eOut = x => 1 - Math.pow(1 - x, 3);
+const eOut5 = x => 1 - Math.pow(1 - x, 5);
+const eInOut = x => (x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eSine = x => -(Math.cos(Math.PI * x) - 1) / 2;
+const eBack = x => { const c1 = 1.4, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const easeInQuint = x => x * x * x * x * x;
+const easeOutExpo = x => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const easeOutBack = (x, c1 = 2.2) => { const c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const easeOutElastic = x => x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -9 * x) * Math.sin((x * 9 - .75) * (2 * Math.PI / 3.2)) + 1;
+const hit = (t, a, k = 6) => (t < a ? 0 : Math.exp(-(t - a) * k));
+const pulse = () => 0; // no beat-locked punches: motion flows freely
+function rng(s) { return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+function T(x, y, r, sx, sy, fn) { ctx.save(); ctx.translate(x, y); ctx.rotate(r); ctx.scale(sx, sy ?? sx); fn(); ctx.restore(); }
+function bg(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); }
+function setFont(px, fam) { ctx.font = (fam === 'Inter' ? '700 ' : '') + `${px}px ${fam}`; }
+
+// Animated word: letters rise in one after another (smooth, no hard cuts).
+// t0 = start, st = stagger per letter, d = duration per letter. Returns nothing.
+function word(s, x, y, size, color, fam, t, t0, o = {}) {
+  if (t < t0) return;
+  const st = o.st ?? 0.06, d = o.d ?? 0.75, align = o.align || 'center', sx = o.sx || 1;
+  setFont(size, fam); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const ws = [...s].map(ch => ctx.measureText(ch).width), total = ws.reduce((a, b) => a + b, 0) * sx;
+  let x0 = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+  const rise = o.rise ?? size * 0.35;
+  [...s].forEach((ch, i) => {
+    const p = eOut5(pr(t, t0 + i * st, d));
+    if (p > 0) {
+      ctx.save(); ctx.globalAlpha *= clamp(p * 1.6);
+      const big = size >= 100, q = big ? easeOutBack(pr(t, t0 + i * st, d * 1.1), 2.0) : p;
+      ctx.translate(x0 + ws[i] * sx / 2, y + (1 - p) * rise); ctx.scale(sx * (big ? lerp(.55, 1, q) : 1), big ? lerp(.3, 1, q) : lerp(o.squash ?? .6, 1, p));
+      ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.fillText(ch, 0, 0); ctx.restore();
+    }
+    x0 += ws[i] * sx;
+  });
+}
+// tall word that grows vertically from a line (reference style)
+function grow(s, x, y, size, color, t, t0, d = .9, o = {}) {
+  if (t < t0) return; const p = eOut5(pr(t, t0, d));
+  T(x, y, o.rot || 0, o.sx || 1, p, () => { setFont(size, o.fam || 'Six'); ctx.textAlign = o.align || 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = color; ctx.fillText(s, 0, 0); });
+}
+
+// ---------- symbols ----------
+function sun(x, y, r, rot, c) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = c; ctx.beginPath(); ctx.arc(0, 0, r * .5, 0, 7); ctx.fill();
+  for (let i = 0; i < 8; i++) { ctx.save(); ctx.rotate(i * Math.PI / 4); ctx.beginPath(); ctx.moveTo(-r * .14, -r * .66); ctx.lineTo(0, -r); ctx.lineTo(r * .14, -r * .66); ctx.fill(); ctx.restore(); } ctx.restore(); }
+function moon(x, y, r, c, bgc) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.fillStyle = bgc; ctx.beginPath(); ctx.arc(x + r * .45, y - r * .2, r * .9, 0, 7); ctx.fill(); }
+function star4(x, y, r, c, rot = 0) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = c; ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? r * .22 : r; ctx.lineTo(Math.sin(a) * rr, -Math.cos(a) * rr); } ctx.closePath(); ctx.fill(); ctx.restore(); }
+function burst(x, y, r, n, rot, c, inner = .78) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = c; ctx.beginPath(); for (let i = 0; i < n * 2; i++) { const a = i * Math.PI / n, rr = i % 2 ? r * inner : r; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.closePath(); ctx.fill(); ctx.restore(); }
+function radial(cx, cy, n, c, lw = 2, rot = 0, curve = 0) { ctx.save(); ctx.strokeStyle = c; ctx.lineWidth = lw;
+  for (let i = 0; i < n; i++) { const a = i / n * 6.283 + rot; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(cx + Math.cos(a + curve) * 700, cy + Math.sin(a + curve) * 700, cx + Math.cos(a) * 2200, cy + Math.sin(a) * 2200); ctx.stroke(); } ctx.restore(); }
+function stars(seed, n, t) { const r = rng(seed); for (let i = 0; i < n; i++) { const tw = .5 + .5 * Math.sin(t * 2 + i); ctx.fillStyle = `rgba(255,255,255,${(.25 + r() * .6) * tw})`; ctx.beginPath(); ctx.arc(r() * W, r() * H, .6 + r() * 2, 0, 7); ctx.fill(); } }
+
+// ---------- photos ----------
+const IMG = {}, BW = {}, DUO = {};
+const FOCUS = { p13: [.45, .4], p14: [.6, .38], p15: [.53, .48], p16: [.5, .5], p17: [.42, .32], p18: [.5, .45], p19: [.5, .36], p20: [.48, .55], p21: [.42, .55] };
+async function load(k) { const i = new Image(); i.src = `ph/${k}.jpg`; await i.decode(); IMG[k] = i; }
+function processImg(k, bright) {
+  const im = IMG[k], c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d');
+  x.filter = `grayscale(1) brightness(${bright}) contrast(1.55)`; x.drawImage(im, 0, 0); BW[k] = c;
+  const d = document.createElement('canvas'); d.width = c.width; d.height = c.height; const y = d.getContext('2d'); y.drawImage(c, 0, 0);
+  const id = y.getImageData(0, 0, d.width, d.height), p = id.data;
+  for (let i = 0; i < p.length; i += 4) { const L = p[i] / 255;
+    if (L < .55) { const k2 = L / .55; p[i] = 225 * k2; p[i + 1] = 6 * k2; p[i + 2] = 0; } else { const k2 = (L - .55) / .45; p[i] = 225 + 30 * k2; p[i + 1] = 6 + 230 * k2; p[i + 2] = 230 * k2; } }
+  y.putImageData(id, 0, 0); DUO[k] = d;
+}
+function coverF(src, k, x, y, w, h, z = 1) {
+  const s = Math.max(w / src.width, h / src.height) * z, iw = src.width * s, ih = src.height * s, [fx, fy] = FOCUS[k];
+  const ox = clamp(w / 2 - fx * iw, w - iw, 0), oy = clamp(h / 2 - fy * ih, h - ih, 0);
+  ctx.drawImage(src, x + ox, y + oy, iw, ih);
+}
+const JAG = {};
+function jagPath(w, h, tooth, seed) {
+  const key = [w, h, tooth, seed].join(); let pts = JAG[key];
+  if (!pts) { const r = rng(seed); pts = [];
+    const edge = (x0, y0, x1, y1, nx, ny) => { const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(2, Math.round(L / tooth));
+      for (let i = 0; i < n; i++) { const a = i / n, b = (i + .5) / n, d = tooth * (.5 + r() * .8); pts.push([lerp(x0, x1, a), lerp(y0, y1, a)], [lerp(x0, x1, b) + nx * d, lerp(y0, y1, b) + ny * d]); } };
+    edge(-w / 2, -h / 2, w / 2, -h / 2, 0, -1); edge(w / 2, -h / 2, w / 2, h / 2, 1, 0); edge(w / 2, h / 2, -w / 2, h / 2, 0, 1); edge(-w / 2, h / 2, -w / 2, -h / 2, -1, 0); JAG[key] = pts; }
+  ctx.beginPath(); pts.forEach(([a, b], i) => i ? ctx.lineTo(a, b) : ctx.moveTo(a, b)); ctx.closePath();
+}
+function photo(k, x, y, w, h, rot = 0, o = {}) {
+  const src = (o.duo ? DUO : BW)[k], bw = o.border ?? 16;
+  T(x, y, rot, o.s ?? 1, o.s ?? 1, () => {
+    ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12; ctx.fillStyle = o.bc || WHT;
+    if (o.style === 'jag') { jagPath(w + bw * 2, h + bw * 2, o.tooth || 34, o.seed || 3); ctx.fill(); } else ctx.fillRect(-w / 2 - bw, -h / 2 - bw, w + bw * 2, h + bw * 2);
+    ctx.shadowColor = 'transparent';
+    ctx.save(); ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); ctx.clip(); coverF(src, k, -w / 2, -h / 2, w, h, o.z || 1);
+    if (o.tint) { ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = o.tint; ctx.fillRect(-w / 2, -h / 2, w, h); } ctx.restore();
+  });
+}
+function tarot(k, x, y, w, rot, num, title, o = {}) {
+  const h = w * 1.65;
+  T(x, y, rot, o.s ?? 1, o.s ?? 1, () => {
+    ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18; ctx.fillStyle = WHT; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = BLK; ctx.lineWidth = 4; ctx.strokeRect(-w / 2 + 12, -h / 2 + 12, w - 24, h - 24);
+    const pw = w - 48, ph = h - 170;
+    ctx.save(); ctx.beginPath(); ctx.rect(-pw / 2, -h / 2 + 64, pw, ph); ctx.clip(); coverF(o.duo ? DUO[k] : BW[k], k, -pw / 2, -h / 2 + 64, pw, ph); ctx.restore();
+    setFont(34, 'League'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = BLK; ctx.fillText(num, 0, -h / 2 + 38);
+    setFont(58, 'League'); ctx.fillText(title, 0, h / 2 - 52);
+    star4(-w / 2 + 34, h / 2 - 52, 12, RED); star4(w / 2 - 34, h / 2 - 52, 12, RED);
+  });
+}
+function eye(x, y, w, open, irisFn) { const h = w * .42 * open; ctx.save(); ctx.translate(x, y); ctx.beginPath(); ctx.moveTo(-w / 2, 0); ctx.quadraticCurveTo(0, -h * 2, w / 2, 0); ctx.quadraticCurveTo(0, h * 2, -w / 2, 0); ctx.closePath(); ctx.fillStyle = WHT; ctx.fill(); ctx.clip(); irisFn(); ctx.restore(); }
+// slow continuous camera drift for a scene
+function cam(t, a, b, z0 = 1, z1 = 1.06, rot = 0) {
+  const p = eSine(pr(t, a, b - a));
+  const kIn = easeOutExpo(pr(t, a - .05, .75)), kRot = easeOutBack(pr(t, a - .05, .9), 1.8);
+  const kOut = easeInQuint(pr(t, b - .5, .62));
+  const z = lerp(z0, z1, p) * lerp(1.28, 1, kIn) * lerp(1, 1.32, kOut);
+  const r = rot * p + lerp(-.07, 0, kRot) + lerp(0, .05, kOut);
+  ctx.translate(W / 2 + Math.sin(t * .45) * 14, H / 2 + Math.cos(t * .37) * 10 + lerp(40, 0, kIn)); ctx.rotate(r); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+}
+const bob = (t, s, a = 8) => Math.sin(t * 1.6 + s) * a;
+
+// ---------- scenes (lyrics timed to the vocal) ----------
+const S = [];
+S.push([0.0, t => { // di kehidupan
+  bg(BLK); cam(t, 0, 2.0, 1, 1.05); stars(2, 40, t);
+  const k = eInOut(pr(t, 0, .8)); ctx.fillStyle = GRY; ctx.beginPath(); ctx.arc(W * .25, H * .42, lerp(950, 0, k), 0, 7); ctx.fill();
+  sun(W * .63, H * .45, 72 * eBack(pr(t, .25, .6)), t * .6, WHT);
+  word('di kehidupan', W * .63 - 120, H * .45, 40, WHT, 'Inter', t, .5, { align: 'right', st: .07 });
+}]);
+S.push([2.0, t => { // kedua (di kesempatan kedua)
+  bg(RED); cam(t, 2.0, 3.45, 1.04, 1); radial(W / 2, H / 2, 20, 'rgba(0,0,0,.18)', 2, t * .05, .4);
+  const a = (t - 2) * 1.4; moon(W * .42, H / 2, 54 * eBack(pr(t, 2.0, .6)), BLK, RED);
+  ctx.fillStyle = BLK; ctx.beginPath(); ctx.arc(W * .42 + Math.cos(a) * 190, H / 2 + Math.sin(a) * 120, 11, 0, 7); ctx.fill();
+  word('kedua', W * .42 + 90, H / 2, 40, BLK, 'Inter', t, 2.15, { align: 'left' });
+  word('(di kesempatan kedua)', W * .42 + 90, H / 2 + 52, 24, 'rgba(0,0,0,.7)', 'Inter', t, 2.6, { align: 'left', st: .025 });
+  const p = eOut5(pr(t, 2.45, .7)); photo('p14', W * .78, H * .5 + (1 - p) * 700 + bob(t, 1), 250, 350, lerp(.3, -.07, p), { style: 'jag', seed: 23 });
+}]);
+S.push([3.45, t => { // s'moga kau
+  bg(BLK); cam(t, 3.45, 4.5, 1.08, 1); stars(5, 50, t);
+  const p = eOut5(pr(t, 3.5, .8)); photo('p19', W / 2, H / 2 + bob(t, 2, 6), 300, 400, lerp(-.15, .03, p), { s: lerp(.85, 1, p), style: 'jag', seed: 41 });
+  word("s'moga", W / 2 - 230, H / 2, 40, WHT, 'Inter', t, 3.5, { align: 'right' });
+  word('kau', W / 2 + 230, H / 2, 40, WHT, 'Inter', t, 4.0, { align: 'left' });
+}]);
+S.push([4.5, t => { // tak terlalu KERAS KEPALA
+  const turn = eInOut(pr(t, 5.6, .9)); bg(WHT); ctx.globalAlpha = turn; bg(RED); ctx.globalAlpha = 1; cam(t, 4.5, 7.5, 1, 1.07);
+  const band = eOut5(pr(t, 4.5, .9)); ctx.globalAlpha = 1 - turn; ctx.fillStyle = RED; ctx.fillRect(0, H * .3, W * band, H * .42); ctx.globalAlpha = turn; ctx.fillStyle = WHT; ctx.fillRect(0, H * .3, W * band, H * .42); ctx.globalAlpha = 1;
+  const p = eOut5(pr(t, 4.6, .8)); photo('p13', W * .38, H * .52 + (1 - p) * 700 + bob(t, 3), 360, 520, -.05, { style: 'jag', seed: 7 });
+  word('tak', W * .1, H * .44, 44, turn > .5 ? BLK : WHT, 'Inter', t, 4.5, { align: 'left' });
+  word('terlalu', W * .1, H * .5, 44, turn > .5 ? BLK : WHT, 'Inter', t, 4.75, { align: 'left' });
+  word('KERAS', W * .73, H * .35, 330, BLK, 'Six', t, 5.0, { st: .12, d: .8 });
+  word('KEPALA', W * .75, H * .68, 330, BLK, 'Six', t, 5.75, { st: .1, d: .8 });
+  const r = eOut5(pr(t, 6.3, .5)); T(W * .38, H * .4 + bob(t, 3), -.05, 1, 1, () => { ctx.fillStyle = RED; ctx.fillRect(-200 * r, -22, 400 * r, 44); });
+}]);
+const mask = () => mask.c || (mask.c = mk());
+S.push([7.5, t => { // atau mungkin
+  bg(BLK); cam(t, 7.5, 8.7, 1, 1.05);
+  const m = eOut5(pr(t, 7.9, .9)); const mc = mask(); const mx = mc.getContext('2d'); mx.clearRect(0, 0, W, H);
+  mx.save(); mx.translate(W * .56, H * .5); mx.scale(1, m); mx.font = '1300px Six'; mx.textAlign = 'center'; mx.textBaseline = 'middle'; mx.fillStyle = RED; mx.fillText('M', 0, 0); mx.restore();
+  mx.globalCompositeOperation = 'source-atop'; mx.globalAlpha = .85; const z = 1.15 - (t - 7.5) * .08; const iw = 700 * z, ih = iw * IMG.p20.height / IMG.p20.width; mx.drawImage(DUO.p20, W * .56 - iw / 2, H * .5 - ih * .45, iw, ih); mx.globalAlpha = 1; mx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(mc, 0, 0);
+  word('atau', W * .3, H * .5, 40, WHT, 'Inter', t, 7.7);
+  word('mungkin', W * .74, H * .5, 40, WHT, 'Inter', t, 8.05);
+}]);
+S.push([8.7, t => { // ini bukan yang pertama (ini bukan yang pertama)
+  bg(RED); cam(t, 8.7, 12.4, 1, 1.06);
+  const k = eOut5(pr(t, 8.75, .6)); ctx.fillStyle = BLK; ctx.fillRect(W * .47, 0, 270 * k, H);
+  word('ini', W * .1, H * .2, 40, WHT, 'Inter', t, 8.8); word('bukan', W * .22, H * .2, 40, WHT, 'Inter', t, 9.05); word('yang', W * .34, H * .2, 40, WHT, 'Inter', t, 9.3);
+  const p = eOut5(pr(t, 10.4, .8)); if (t > 10.4) photo('p15', W * .27, H * .58 + bob(t, 4), 320, 420, lerp(.25, .04, p), { s: p, tint: '#ff2a2a', border: 12 });
+  word('INI', W * .47 + 135, H * .34, 120, WHT, 'League', t, 10.75); word('BUKAN', W * .47 + 135, H * .5, 120, WHT, 'League', t, 11.0); word('YANG', W * .47 + 135, H * .66, 120, WHT, 'League', t, 11.25);
+  if (t > 11.5) { const bx = W * .47 + 270, p = eOut5(pr(t, 11.5, .7)); setFont(430, 'Six'); const wd = ctx.measureText('PERTAMA').width, sx = Math.min(1, (W - bx - 40) / wd);
+    ctx.save(); ctx.beginPath(); ctx.rect(bx, 0, W - bx, H); ctx.clip(); T(bx + 20 + (1 - p) * -wd * sx, H * .5, 0, sx, 1, () => { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = BLK; ctx.fillText('PERTAMA', 0, 0); }); ctx.restore(); }
+}]);
+S.push([12.4, t => { // dan kita diberi kesempatan berubah
+  bg(RED); cam(t, 12.4, 15.9, 1.04, 1, -.03); radial(W * .35, H * .5, 22, 'rgba(0,0,0,.5)', 2, t * .04, .5);
+  const d = eOut5(pr(t, 12.4, .4)); T(W * .35, H * .5, t, d, d, () => { ctx.fillStyle = WHT; ctx.fillRect(-50, -50, 100, 100); });
+  burst(W * .35, H * .5, 75 * eBack(pr(t, 12.8, .5)), 14, t * .7, BLK);
+  word('dan kita', W * .35, H * .5 - 110, 34, WHT, 'Inter', t, 12.6); word('diberi', W * .35, H * .5 + 110, 34, WHT, 'Inter', t, 12.95);
+  const p = eOut5(pr(t, 13.0, .9)); photo('p14', W * .66, H * .52 + bob(t, 5), 320, 440, lerp(.5, -.1, p), { style: 'jag', seed: 11, s: p });
+  word('KESEMPATAN', W * .66, H * .14, 190, BLK, 'Six', t, 13.0, { st: .06 });
+  word('berubah', W * .66, H * .9, 40, BLK, 'Inter', t, 14.0, { st: .07 });
+  if (t > 14.8) { const q = eOut5(pr(t, 14.8, .8)); photo('p17', W * .2, H * .75 + (1 - q) * 600, 200, 300, .1, { duo: true, border: 12 }); }
+}]);
+S.push([15.9, t => { // ku yakin nyawa kita
+  bg(BLK); cam(t, 15.9, 18.5, 1, 1.05); radial(W / 2, H / 2, 36, 'rgba(225,6,0,.35)', 1.5, t * .03);
+  word('ku', W * .32, H * .5, 40, WHT, 'Inter', t, 16.0); word('yakin', W * .68, H * .5, 40, WHT, 'Inter', t, 16.25);
+  if (t > 16.9) { const x = W + 100 - eInOut(pr(t, 16.8, 2.2)) * 1950; setFont(640, 'Six'); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = RED; ctx.fillText('NYAWA KITA', x, H * .5); }
+}]);
+function warpWord(s, y, size, color, t, amp) {
+  const c = warpWord.c || (warpWord.c = document.createElement('canvas')); c.width = W; c.height = Math.ceil(size * 1.2); const x = c.getContext('2d');
+  x.font = `${size}px Six`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = color; x.fillText(s, W / 2, c.height / 2);
+  for (let sy = 0; sy < c.height; sy += 4) ctx.drawImage(c, 0, sy, W, 4, Math.sin(sy * .02 + t * 3) * amp, y - c.height / 2 + sy, W, 4);
+}
+S.push([18.5, t => { // bertautan: two photos intertwine
+  bg(BLK); cam(t, 18.5, 21.2, 1, 1.06); radial(W / 2, H / 2, 30, 'rgba(225,6,0,.25)', 1.5, -t * .02);
+  warpWord('BERTAUTAN', H * .5, 520, RED, t, lerp(120, 30, eOut(pr(t, 18.5, 1.5))));
+  const a = (t - 18.5) * .9, p = eOut5(pr(t, 18.7, .9));
+  photo('p19', W / 2 + Math.cos(a) * 260 * p, H / 2 + Math.sin(a) * 90, 260, 340, Math.sin(a) * .2, { style: 'jag', seed: 31, s: p });
+  photo('p16', W / 2 - Math.cos(a) * 260 * p, H / 2 - Math.sin(a) * 90, 260, 260, -Math.sin(a) * .2, { border: 12, s: p, duo: true });
+  sun(W * .82, H * .18, 40, t * .5, WHT); moon(W * .18, H * .82, 30, WHT, BLK);
+}]);
+S.push([21.2, t => { // khatam berbagai
+  const k = eInOut(pr(t, 21.55, .45)); bg(RED); ctx.globalAlpha = k; bg(BLK); ctx.globalAlpha = 1; cam(t, 21.2, 22.45, 1.08, 1);
+  ctx.globalAlpha = 1 - k; T(0, -k * 120, 0, 1, 1, () => word('KHATAM', W / 2, H / 2, 300, BLK, 'Six', t, 21.25, { st: .06 })); ctx.globalAlpha = 1;
+  word('BERBAGAI', W / 2, H / 2, 300, RED, 'Six', t, 21.7, { st: .05 });
+}]);
+S.push([22.45, t => { // cobaan: kaleidoscope of photos
+  bg(RED); cam(t, 22.45, 24.45, 1, 1); const n = 10, R = 950, rot = (t - 22.45) * .45, zz = lerp(.6, 1.1, eOut(pr(t, 22.45, 2)));
+  for (let i = 0; i < n; i++) { ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(zz, zz); ctx.rotate(rot + i * 6.283 / n); if (i % 2) ctx.scale(1, -1);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, -Math.PI / n, Math.PI / n); ctx.closePath(); ctx.clip();
+    const src = [DUO.p13, BW.p18, DUO.p18, BW.p15][i % 4]; ctx.drawImage(src, 40 + Math.sin(t * 1.2) * 40, -260, 520, 520 * src.height / src.width); ctx.restore(); }
+  burst(W / 2, H / 2, 130 + pulse(t) * 20, 16, -t * .6, BLK);
+  word('cobaan', W / 2, H / 2, 46, WHT, 'Inter', t, 22.7, { st: .06 });
+}]);
+S.push([24.45, t => { // selalu menertawakan (glitchy laughing photo)
+  bg(BLK); cam(t, 24.45, 27.2, 1, 1.05);
+  const fo = eInOut(pr(t, 25.2, .5)); if (fo < 1) { ctx.globalAlpha = 1 - fo; word('SELALU', W / 2, H / 2, 200, WHT, 'Six', t, 24.5, { st: .08 }); ctx.globalAlpha = 1; }
+  if (fo <= 0) return; ctx.globalAlpha = fo;
+  const g = .5, src = DUO.p13, pw = 700, phh = 780, x0 = W / 2 - pw / 2, y0 = H * .45 - phh / 2, r = rng(Math.floor(t * 24));
+  ctx.fillStyle = WHT; ctx.fillRect(x0 - 14, y0 - 14, pw + 28, phh + 28);
+  for (let y = 0; y < phh; y += 10) { const off = Math.sin(y * .04 + t * 3.5) * 22 * g + Math.sin(y * .013 - t * 2) * 10;
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, y0 + y, pw, 10); ctx.clip(); coverF(src, 'p13', x0 + off, y0, pw, phh); ctx.restore(); }
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; for (let y = 0; y < H; y += 6) ctx.fillRect(0, y, W, 2);
+  word('menertawakan', W / 2, H * .93, 56, WHT, 'Inter', t, 25.5, { st: .05 }); ctx.globalAlpha = 1;
+}]);
+S.push([27.2, t => { // ramalan bintang, kartu
+  bg('#050505'); cam(t, 27.2, 29.0, 1.05, 1); stars(91, 110, t);
+  const pts = [[.3, .72], [.5, .24], [.7, .72], [.24, .42], [.76, .42], [.3, .72]], k = eInOut(pr(t, 27.2, 1.3)) * (pts.length - 1);
+  ctx.strokeStyle = RED; ctx.lineWidth = 3; ctx.shadowColor = RED; ctx.shadowBlur = 20; ctx.beginPath();
+  for (let i = 0; i <= Math.floor(k) && i < pts.length; i++) { const [x, y] = pts[i]; i ? ctx.lineTo(x * W, y * H) : ctx.moveTo(x * W, y * H); }
+  const f = k - Math.floor(k), i0 = Math.floor(k); if (i0 + 1 < pts.length) ctx.lineTo(lerp(pts[i0][0], pts[i0 + 1][0], f) * W, lerp(pts[i0][1], pts[i0 + 1][1], f) * H);
+  ctx.stroke(); ctx.shadowBlur = 0; pts.forEach(([x, y]) => { ctx.fillStyle = RED; ctx.beginPath(); ctx.arc(x * W, y * H, 7, 0, 7); ctx.fill(); });
+  word('ramalan bintang', W / 2, H * .9, 44, WHT, 'Inter', t, 27.3, { st: .04 });
+  { const q = eOut5(pr(t, 27.4, 1.0)); photo('p21', W * .16, H * .62 + (1 - q) * 500 + bob(t, 7), 200, 340, lerp(-.4, -.1, q), { border: 10 }); }
+  if (t > 28.25) { ctx.globalAlpha = .92; grow('KARTU', W / 2, H * .5, 540, RED, t, 28.25, .6); ctx.globalAlpha = 1; }
+}]);
+S.push([29.0, t => { // tarot: three cards
+  bg(RED); cam(t, 29.0, 31.1, 1, 1.05); radial(W / 2, H * 1.1, 24, 'rgba(0,0,0,.4)', 2, t * .02);
+  const set = [['p14', -1, 'VI', 'MASA LALU'], ['p16', 0, 'X', 'SEKARANG'], ['p21', 1, 'XXI', 'NANTI']];
+  set.forEach(([k, i, n, ti], j) => { const st = 29.05 + j * .25; if (t < st) return; const p = eOut5(pr(t, st, .8));
+    tarot(k, W / 2 + i * 310 * p, H * .56 + (1 - p) * 500 + bob(t, j, 6), 260, i * .2 * p, n, ti, { duo: j !== 1 }); });
+  word('TAROT', W / 2, H * .1, 150, BLK, 'Six', t, 29.1, { st: .1 });
+  star4(W * .88, H * .14, 40 * eBack(pr(t, 29.6, .6)), WHT, t);
+}]);
+S.push([31.1, t => { // orang pintar pembaca nasib: eye
+  bg(BLK); cam(t, 31.1, 33.5, 1, 1.04); const z = lerp(1.7, 1, eOut5(pr(t, 31.1, 1.2)));
+  const open = clamp(eOut(pr(t, 31.1, .8)) - Math.sin(Math.PI * pr(t, 32.3, .35)) * .85);
+  T(W / 2 + 120, H / 2, 0, z, z, () => eye(0, 0, 900, open, () => {
+    ctx.fillStyle = RED; ctx.beginPath(); ctx.arc(0, 0, 190, 0, 7); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 155, 0, 7); ctx.clip(); coverF(BW.p18, 'p18', -155, -155, 310, 310, 1.6); ctx.restore();
+    ctx.strokeStyle = BLK; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(0, 0, 155, 0, 7); ctx.stroke(); }));
+  word('orang pintar', W * .17, H * .36, 40, WHT, 'Inter', t, 31.3, { align: 'left' });
+  word('PEMBACA', W * .2, H * .5, 170, RED, 'Six', t, 31.75, { st: .06 });
+  word('NASIB', W * .2, H * .65, 170, RED, 'Six', t, 32.3, { st: .08 });
+}]);
+S.push([33.5, t => { // flash -> outro (no watermark)
+  const f = 1 - eOut(pr(t, 33.5, .6)); bg(BLK); stars(7, 60, t);
+  const p = easeOutBack(pr(t, 33.9, 1.1), 1.6), a = (t - 33.9) * .6;
+  sun(W / 2 + Math.cos(a) * 70 * p, H / 2 + Math.sin(a) * 40 * p, 34 * p, t * .4, WHT); if (p > .01) moon(W / 2 - Math.cos(a) * 70 * p, H / 2 - Math.sin(a) * 40 * p, 26 * p, RED, BLK);
+  if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f})`; ctx.fillRect(0, 0, W, H); }
+}]);
+
+// smooth transitions between scenes
+const TR = 0.7, KINDS = ['zoom', 'fade', 'zoom', 'slide', 'zoom', 'fade', 'circle'];
+function drawScene(i, t, target) { ctx = target.getContext('2d'); ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; S[i][1](t); ctx.restore(); }
+function compose(t, dst) {
+  const d = dst.getContext('2d');
+  let j = -1; for (let k = 1; k < S.length; k++) if (t >= S[k][0] - TR / 2 && t < S[k][0] + TR / 2) j = k;
+  if (j < 0) { let i = 0; for (let k = 0; k < S.length; k++) if (t >= S[k][0]) i = k; drawScene(i, t, bufB); d.drawImage(bufB, 0, 0); return; }
+  const p = eInOut(clamp((t - (S[j][0] - TR / 2)) / TR));
+  drawScene(j - 1, t, bufA); drawScene(j, t, bufB);
+  const kind = KINDS[j % KINDS.length];
+  d.save(); d.fillStyle = '#000'; d.fillRect(0, 0, W, H);
+  if (kind === 'slide') { d.drawImage(bufA, -W * p, 0); d.drawImage(bufB, W * (1 - p), 0); }
+  else if (kind === 'zoom') {
+    d.save(); d.globalAlpha = 1 - p; const za = 1 + p * .25; d.translate(W / 2, H / 2); d.scale(za, za); d.translate(-W / 2, -H / 2); d.drawImage(bufA, 0, 0); d.restore();
+    d.globalAlpha = p; const zb = 1.2 - p * .2; d.translate(W / 2, H / 2); d.scale(zb, zb); d.translate(-W / 2, -H / 2); d.drawImage(bufB, 0, 0); }
+  else if (kind === 'circle') { d.drawImage(bufA, 0, 0); d.beginPath(); d.arc(W / 2, H / 2, p * 1000, 0, 7); d.clip(); d.drawImage(bufB, 0, 0); }
+  else { d.drawImage(bufA, 0, 0); d.globalAlpha = p; d.drawImage(bufB, 0, 0); }
+  d.restore();
+}
+
+// grain + vignette
+const grains = []; (() => { const r = rng(5); for (let g = 0; g < 6; g++) { const c = document.createElement('canvas'); c.width = 720; c.height = 540; const x = c.getContext('2d'); const id = x.createImageData(720, 540);
+  for (let i = 0; i < id.data.length; i += 4) { const v = r() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; } x.putImageData(id, 0, 0); grains.push(c); } })();
+const frameBuf = mk();
+function render(t) {
+  // motion blur: average SUB sub-frames across the shutter
+  for (let s = 0; s < SUB; s++) {
+    compose(t + s * SHUTTER / SUB, frameBuf);
+    octx.globalAlpha = 1 / (s + 1); octx.drawImage(frameBuf, 0, 0);
+  }
+  octx.globalAlpha = .1; octx.globalCompositeOperation = 'overlay'; octx.drawImage(grains[Math.floor(t * 24) % 6], 0, 0, W, H);
+  octx.globalCompositeOperation = 'source-over'; octx.globalAlpha = 1;
+  const v = octx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, W * .75); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.42)'); octx.fillStyle = v; octx.fillRect(0, 0, W, H);
+  const f = clamp((t - (DURATION - 1)) / 1); if (f > 0) { octx.fillStyle = `rgba(0,0,0,${f})`; octx.fillRect(0, 0, W, H); }
+}
+
+window.ready = (async () => {
+  await Promise.all([document.fonts.load('100px Six'), document.fonts.load('100px League'), document.fonts.load('700 30px Inter')]);
+  const ks = ['p13', 'p14', 'p15', 'p16', 'p17', 'p18', 'p19', 'p20', 'p21']; await Promise.all(ks.map(load));
+  processImg('p13', 1.05); processImg('p14', 1.9); processImg('p15', 1.05); processImg('p16', 1.1); processImg('p17', 1.15); processImg('p18', 1.0); processImg('p19', 1.25); processImg('p20', 1.0); processImg('p21', 1.05);
+  render(0); return true;
+})();
+window.render = render; window.DURATION = DURATION;
+</script></body></html>
