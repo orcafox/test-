@@ -1,0 +1,552 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PORI Podcast Intro (Remastered)</title>
+<style>
+  @font-face { font-family: 'Anton'; src: url('fonts/Anton.ttf'); }
+  @font-face { font-family: 'InterBold'; src: url('fonts/InterBold.ttf'); }
+  @font-face { font-family: 'SerifBI'; src: url('file:///usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf'), local('Liberation Serif Bold Italic'); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+const W = 1920, H = 1080, DURATION = 12.0;
+const SUB = 3, SHUTTER = 1 / 75;           // motion blur: sub-frames per frame, shutter length
+const GREEN = '#00812F', GREEN_D = '#005c21', GREEN_L = '#0aa040';
+// Beat times (seconds) detected from the song with librosa (~99 BPM, double-time grid).
+const B = [0.418, 0.72, 1.022, 1.3, 1.602, 1.927, 2.229, 2.531, 2.856, 3.158, 3.46, 3.762,
+  4.063, 4.365, 4.667, 4.992, 5.294, 5.596, 5.898, 6.2, 6.502, 6.827, 7.152, 7.454, 7.755,
+  8.057, 8.359, 8.661, 8.963, 9.265, 9.567, 9.868, 10.194, 10.495, 10.797, 11.099, 11.401];
+// Song loudness at 60 samples per second (0..1), used for the waveform and sound rings.
+const ENV = [0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.11, 0.2, 0.27, 0.31, 0.32, 0.33, 0.36, 0.4, 0.44, 0.44, 0.42, 0.38, 0.34, 0.31, 0.27, 0.27, 0.3, 0.35, 0.37, 0.37, 0.34, 0.31, 0.3, 0.3, 0.33, 0.37, 0.43, 0.49, 0.55, 0.58, 0.58, 0.55, 0.52, 0.53, 0.58, 0.63, 0.66, 0.65, 0.6, 0.53, 0.45, 0.39, 0.35, 0.35, 0.37, 0.39, 0.41, 0.42, 0.41, 0.38, 0.34, 0.32, 0.33, 0.35, 0.37, 0.37, 0.37, 0.36, 0.35, 0.35, 0.36, 0.36, 0.34, 0.33, 0.32, 0.32, 0.32, 0.33, 0.34, 0.36, 0.4, 0.43, 0.45, 0.45, 0.44, 0.43, 0.41, 0.39, 0.38, 0.37, 0.38, 0.39, 0.39, 0.37, 0.33, 0.31, 0.34, 0.42, 0.52, 0.58, 0.57, 0.5, 0.38, 0.25, 0.16, 0.09, 0.06, 0.06, 0.08, 0.11, 0.13, 0.15, 0.16, 0.17, 0.17, 0.18, 0.17, 0.17, 0.17, 0.18, 0.18, 0.18, 0.18, 0.18, 0.18, 0.18, 0.17, 0.15, 0.13, 0.12, 0.12, 0.12, 0.13, 0.19, 0.35, 0.55, 0.75, 0.86, 0.91, 0.9, 0.88, 0.88, 0.87, 0.86, 0.84, 0.82, 0.84, 0.87, 0.92, 0.93, 0.92, 0.87, 0.84, 0.79, 0.79, 0.8, 0.82, 0.85, 0.85, 0.88, 0.89, 0.89, 0.92, 0.94, 0.94, 0.95, 0.93, 0.92, 0.92, 0.94, 0.94, 0.91, 0.88, 0.86, 0.85, 0.83, 0.79, 0.73, 0.66, 0.61, 0.57, 0.59, 0.69, 0.84, 0.95, 0.99, 0.98, 0.92, 0.83, 0.76, 0.77, 0.85, 0.94, 0.98, 0.99, 0.96, 0.9, 0.82, 0.75, 0.71, 0.74, 0.79, 0.84, 0.87, 0.89, 0.89, 0.89, 0.88, 0.87, 0.87, 0.86, 0.85, 0.85, 0.85, 0.87, 0.89, 0.91, 0.92, 0.91, 0.9, 0.88, 0.88, 0.88, 0.87, 0.85, 0.82, 0.77, 0.72, 0.67, 0.65, 0.65, 0.67, 0.71, 0.73, 0.74, 0.73, 0.69, 0.64, 0.57, 0.5, 0.43, 0.38, 0.38, 0.44, 0.52, 0.61, 0.67, 0.68, 0.67, 0.64, 0.61, 0.6, 0.59, 0.6, 0.62, 0.62, 0.62, 0.61, 0.6, 0.6, 0.63, 0.7, 0.78, 0.85, 0.91, 0.95, 0.97, 0.97, 0.95, 0.91, 0.86, 0.83, 0.8, 0.76, 0.73, 0.67, 0.63, 0.59, 0.57, 0.56, 0.56, 0.61, 0.68, 0.79, 0.88, 0.92, 0.91, 0.85, 0.77, 0.69, 0.63, 0.6, 0.58, 0.58, 0.57, 0.56, 0.53, 0.51, 0.5, 0.55, 0.65, 0.78, 0.87, 0.89, 0.86, 0.8, 0.77, 0.76, 0.75, 0.73, 0.74, 0.76, 0.81, 0.83, 0.82, 0.79, 0.71, 0.65, 0.59, 0.59, 0.62, 0.67, 0.7, 0.68, 0.63, 0.56, 0.54, 0.53, 0.56, 0.61, 0.7, 0.8, 0.91, 0.96, 0.92, 0.84, 0.78, 0.79, 0.87, 0.95, 1.0, 0.98, 0.92, 0.85, 0.79, 0.76, 0.77, 0.8, 0.79, 0.76, 0.72, 0.67, 0.62, 0.56, 0.51, 0.48, 0.48, 0.49, 0.51, 0.54, 0.57, 0.61, 0.64, 0.66, 0.66, 0.65, 0.64, 0.63, 0.64, 0.63, 0.61, 0.59, 0.59, 0.61, 0.65, 0.69, 0.7, 0.7, 0.7, 0.7, 0.69, 0.66, 0.62, 0.57, 0.54, 0.55, 0.57, 0.59, 0.59, 0.57, 0.56, 0.56, 0.59, 0.63, 0.64, 0.62, 0.58, 0.53, 0.52, 0.52, 0.53, 0.52, 0.51, 0.5, 0.48, 0.48, 0.47, 0.5, 0.61, 0.75, 0.88, 0.95, 0.98, 0.96, 0.91, 0.82, 0.73, 0.68, 0.69, 0.74, 0.78, 0.79, 0.78, 0.75, 0.74, 0.72, 0.72, 0.72, 0.76, 0.82, 0.87, 0.93, 0.95, 0.95, 0.92, 0.88, 0.85, 0.82, 0.8, 0.79, 0.77, 0.76, 0.75, 0.75, 0.75, 0.78, 0.83, 0.89, 0.95, 0.98, 0.98, 0.94, 0.91, 0.9, 0.91, 0.93, 0.97, 0.99, 1.0, 0.99, 0.96, 0.92, 0.89, 0.86, 0.83, 0.8, 0.81, 0.82, 0.84, 0.83, 0.78, 0.71, 0.65, 0.62, 0.6, 0.63, 0.69, 0.81, 0.9, 0.96, 0.95, 0.87, 0.79, 0.72, 0.72, 0.78, 0.87, 0.93, 0.94, 0.91, 0.85, 0.81, 0.78, 0.77, 0.76, 0.72, 0.67, 0.63, 0.62, 0.64, 0.67, 0.7, 0.7, 0.69, 0.67, 0.66, 0.66, 0.66, 0.66, 0.66, 0.67, 0.68, 0.69, 0.7, 0.69, 0.68, 0.67, 0.66, 0.65, 0.62, 0.62, 0.62, 0.62, 0.63, 0.64, 0.64, 0.63, 0.6, 0.56, 0.54, 0.55, 0.56, 0.57, 0.55, 0.52, 0.49, 0.47, 0.5, 0.57, 0.64, 0.68, 0.69, 0.67, 0.65, 0.63, 0.62, 0.62, 0.63, 0.64, 0.66, 0.68, 0.69, 0.68, 0.67, 0.67, 0.71, 0.77, 0.82, 0.84, 0.84, 0.82, 0.81, 0.8, 0.8, 0.79, 0.77, 0.78, 0.78, 0.78, 0.78, 0.77, 0.75, 0.7, 0.65, 0.6, 0.63, 0.72, 0.84, 0.93, 0.97, 0.97, 0.93, 0.87, 0.82, 0.77, 0.78, 0.79, 0.81, 0.82, 0.81, 0.79, 0.76, 0.71, 0.72, 0.77, 0.86, 0.92, 0.94, 0.93, 0.9, 0.88, 0.87, 0.85, 0.84, 0.88, 0.91, 0.94, 0.91, 0.87, 0.83, 0.79, 0.75, 0.7, 0.69, 0.71, 0.75, 0.76, 0.73, 0.67, 0.61, 0.59, 0.58, 0.63, 0.72, 0.85, 0.94, 0.98, 0.95, 0.85, 0.75, 0.72, 0.77, 0.88, 0.95, 0.99, 0.97, 0.93, 0.86, 0.78, 0.73, 0.71, 0.72, 0.73, 0.71, 0.68, 0.65, 0.67, 0.73, 0.81, 0.86, 0.87, 0.83, 0.79, 0.78, 0.79, 0.82, 0.83, 0.82, 0.79, 0.75, 0.74, 0.75, 0.78, 0.81, 0.82, 0.82, 0.8, 0.77, 0.74, 0.73, 0.74, 0.76, 0.78, 0.78, 0.75, 0.74, 0.74, 0.76, 0.77, 0.77, 0.75, 0.7, 0.67, 0.65, 0.67, 0.69, 0.71, 0.72, 0.72, 0.71, 0.7, 0.67, 0.65, 0.63, 0.6, 0.59, 0.59, 0.6, 0.63, 0.65, 0.65, 0.67, 0.72, 0.8, 0.88, 0.92, 0.91, 0.85, 0.76, 0.68, 0.63, 0.64, 0.67, 0.7, 0.71, 0.72, 0.73, 0.73, 0.71, 0.66, 0.62, 0.6, 0.64, 0.68, 0.68, 0.43];
+
+const out = document.getElementById('c'), octx = out.getContext('2d');
+const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+const bufA = mk(), bufB = mk(), frameBuf = mk();
+let ctx = bufB.getContext('2d');
+let NOW = 0;
+
+// ---------- math / easing ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, d) => clamp((t - a) / d);
+const lerp = (a, b, k) => a + (b - a) * k;
+const eOut = x => 1 - Math.pow(1 - x, 3);
+const eExpo = x => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const eInOut = x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eSine = x => -(Math.cos(Math.PI * x) - 1) / 2;
+const backC = (x, c1) => { const c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const eBack = x => backC(x, 1.9);
+const hit = (t, a, k = 10) => (t < a ? 0 : Math.exp(-(t - a) * k));
+function beatPulse(t, from, to, k = 9) {
+  let v = 0;
+  for (const b of B) if (b >= from && b <= to) v = Math.max(v, hit(t, b, k));
+  return v;
+}
+function env(t) { const f = clamp(t, 0, DURATION) * 60, i = Math.floor(f), k = f - i; return lerp(ENV[i] || 0, ENV[i + 1] || 0, k); }
+function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
+
+// ---------- textures ----------
+const grains = [];
+(function makeGrain() {
+  const r = rng(7);
+  for (let g = 0; g < 6; g++) {
+    const c = document.createElement('canvas'); c.width = 480; c.height = 270;
+    const x = c.getContext('2d'); const img = x.createImageData(480, 270);
+    for (let i = 0; i < img.data.length; i += 4) { const v = r() * 255; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+    x.putImageData(img, 0, 0); grains.push(c);
+  }
+})();
+// halftone dot field (dots grow toward the bottom-right), tiled behind every scene
+const HALF = (() => {
+  const c = document.createElement('canvas'); c.width = W + 80; c.height = H + 80; const x = c.getContext('2d');
+  x.fillStyle = '#000';
+  for (let gy = 0; gy < c.height; gy += 26) for (let gx = 0; gx < c.width; gx += 26) {
+    const k = clamp((gx / c.width) * 0.6 + (gy / c.height) * 0.6 - 0.35);
+    if (k <= 0) continue;
+    x.beginPath(); x.arc(gx + ((gy / 26) % 2) * 13, gy, 1 + k * 7, 0, 7); x.fill();
+  }
+  return c;
+})();
+// floating dust motes (screen space)
+const DUST = (() => { const r = rng(91), a = []; for (let i = 0; i < 70; i++) a.push({ x: r() * W, y: r() * H, s: 0.8 + r() * 2.6, v: 6 + r() * 22, p: r() * 6.28, z: r() }); return a; })();
+
+// ---------- drawing helpers ----------
+function bg(c = GREEN) {
+  ctx.fillStyle = c; ctx.fillRect(-W, -H, W * 3, H * 3);
+  ctx.save(); ctx.globalAlpha = 0.07; ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(HALF, -40 - (NOW * 9) % 26, -40 - (NOW * 5) % 26); ctx.restore();
+  const g = ctx.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, W * 0.75);
+  g.addColorStop(0, 'rgba(255,255,255,0.07)'); g.addColorStop(1, 'rgba(0,0,0,0.25)');
+  ctx.fillStyle = g; ctx.fillRect(-W, -H, W * 3, H * 3);
+}
+
+function withT(x, y, rot, sx, sy, fn) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sx, sy === undefined ? sx : sy); fn(); ctx.restore();
+}
+
+function setFont(size, fam = 'Anton') { ctx.font = `${size}px ${fam}`; }
+
+// Keyframed camera (Alight-Motion style): expo ease-out punch-in with an overshooting tilt at the
+// start of a scene, a slow drift through it, and a quint ease-in zoom-through into the next scene.
+function cam(t, a, b, o = {}) {
+  const inZ = o.inZ ?? 1.22, outZ = o.outZ ?? 1.3, rot = o.rot ?? 0.05;
+  const kIn = o.noIn ? 1 : eExpo(prog(t, a - 0.1, 0.8));
+  const kRot = o.noIn ? 1 : backC(prog(t, a - 0.1, 1.0), 1.8);
+  const kOut = o.noOut ? 0 : Math.pow(prog(t, b - 0.45, 0.5), 5);
+  const z = lerp(inZ, 1, kIn) * lerp(1, outZ, kOut) * (1 + 0.035 * eSine(prog(t, a, b - a)));
+  const r = lerp(-rot, 0, kRot) + lerp(0, rot * 0.7, kOut);
+  ctx.translate(W / 2 + Math.sin(t * 0.45) * 10, H / 2 + Math.cos(t * 0.37) * 8 + lerp(30, 0, kIn));
+  ctx.rotate(r); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+}
+
+// Black face + white extrusion (or inverted) like the reference typography, with a shaded side.
+function text3D(str, x, y, size, o = {}) {
+  const face = o.face || '#000', side = o.side || '#fff', depth = o.depth ?? size * 0.07;
+  const dx = o.dx ?? 0.45, dy = o.dy ?? 1;
+  setFont(size, o.fam || 'Anton'); ctx.textAlign = o.align || 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.38)'; ctx.shadowBlur = size * 0.14; ctx.shadowOffsetY = size * 0.07;
+  ctx.fillStyle = side; ctx.fillText(str, x + depth * dx, y + depth * dy);
+  ctx.restore();
+  for (let d = depth; d > 0; d -= 1.5) {
+    ctx.fillStyle = side; ctx.fillText(str, x + d * dx, y + d * dy);
+  }
+  // soft shading on the extrusion so it reads as a solid block
+  ctx.save(); ctx.globalAlpha = 0.18; ctx.fillStyle = face === '#000' ? '#000' : '#fff';
+  ctx.fillText(str, x + depth * dx * 0.5, y + depth * dy * 0.5); ctx.restore();
+  ctx.fillStyle = face; ctx.fillText(str, x, y);
+}
+
+function glowText(str, x, y, size, alpha = 1, o = {}) {
+  setFont(size, o.fam || 'Anton'); ctx.textAlign = o.align || 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(255,255,255,0.9)'; ctx.shadowBlur = size * 0.3;
+  ctx.fillText(str, x, y);
+  ctx.shadowBlur = size * 0.08; ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+// Letters pop in one by one: rise + squash-and-stretch with back (overshoot) easing.
+function letters(str, x, y, size, t, t0, o, drawChar) {
+  const fam = o.fam || 'Anton', st = o.st ?? 0.05, d = o.d ?? 0.55;
+  setFont(size, fam);
+  let cx = x;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i], w = ctx.measureText(ch).width, p = prog(t, t0 + i * st, d);
+    if (p > 0) {
+      const q = backC(p, 2.0), e = eExpo(p);
+      ctx.save(); ctx.globalAlpha *= clamp(p * 2.5);
+      ctx.translate(cx + w / 2, y + (1 - e) * size * 0.35);
+      ctx.rotate((1 - e) * (o.rot ?? 0.22) * (i % 2 ? 1 : -1));
+      ctx.scale(lerp(0.4, 1, q), lerp(0.2, 1, q));
+      drawChar(ch, -w / 2);
+      ctx.restore(); setFont(size, fam);
+    }
+    cx += w + (o.track || 0);
+  }
+  return cx - x;
+}
+
+function label(str, x, y, size, o = {}) {
+  setFont(size, 'InterBold'); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const w = ctx.measureText(str).width, px = size * 0.45, py = size * 0.32;
+  const bw = o.minW ? Math.max(o.minW, w + px * 2) : w + px * 2;
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.28)'; ctx.shadowBlur = size * 0.5; ctx.shadowOffsetY = size * 0.2;
+  ctx.fillStyle = o.bg || '#000'; ctx.fillRect(x, y - size / 2 - py, bw, size + py * 2); ctx.restore();
+  ctx.fillStyle = o.fg || '#fff'; ctx.fillText(str, x + px, y + size * 0.04);
+  return bw;
+}
+
+function starburst(x, y, r, n, rot, color = '#000', inner = 0.58) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const a = (i / (n * 2)) * Math.PI * 2, rr = i % 2 === 0 ? r : r * inner;
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+}
+
+function bubblePath(w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(-w / 2 + r, -h / 2);
+  ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+  ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+  ctx.lineTo(-w * 0.12, h / 2);
+  ctx.lineTo(-w * 0.34, h / 2 + h * 0.36);
+  ctx.lineTo(-w * 0.3, h / 2);
+  ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+  ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+  ctx.closePath();
+}
+
+// Layered green 3D speech bubble with white outline; the three dots bounce in a wave.
+function bubble3D(x, y, s, rot, t) {
+  withT(x, y, rot, s, s, () => {
+    const w = 300, h = 220, r = 70;
+    for (let i = 7; i >= 1; i--) {
+      ctx.save(); ctx.translate(i * 4, i * 5);
+      bubblePath(w, h, r); ctx.fillStyle = i % 2 ? GREEN_D : '#00491a'; ctx.fill(); ctx.restore();
+    }
+    bubblePath(w, h, r);
+    const g = ctx.createLinearGradient(0, -h / 2, 0, h / 2); g.addColorStop(0, '#16b44c'); g.addColorStop(1, GREEN_L);
+    ctx.fillStyle = g; ctx.fill();
+    ctx.save(); ctx.shadowColor = 'rgba(255,255,255,0.8)'; ctx.shadowBlur = 18;
+    ctx.lineWidth = 7; ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round'; ctx.stroke(); ctx.restore();
+    // glossy highlight
+    ctx.save(); bubblePath(w, h, r); ctx.clip(); ctx.globalAlpha = 0.18; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(-40, -h / 2 + 10, 150, 50, -0.1, 0, 7); ctx.fill(); ctx.restore();
+    for (let i = 0; i < 3; i++) {
+      const lift = Math.max(0, Math.sin(t * 7 - i * 0.9));
+      ctx.beginPath(); ctx.arc(-70 + i * 70, -8 - lift * 18, 20 + lift * 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+    }
+  });
+}
+
+// Scrolling audio waveform driven by the song's loudness.
+function waveform(x, y, w, h, t, n, color = '#fff', alpha = 1) {
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.fillStyle = color;
+  const bw = w / n;
+  for (let i = 0; i < n; i++) {
+    const c = Math.abs(i - (n - 1) / 2) / ((n - 1) / 2);
+    const a = env(t - c * 0.25) * (1 - c * 0.55) * (0.55 + 0.45 * Math.abs(Math.sin(i * 1.7 + t * 3)));
+    const bh = Math.max(6, a * h);
+    ctx.beginPath(); ctx.roundRect(x + i * bw + bw * 0.2, y - bh / 2, bw * 0.6, bh, bw * 0.3); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Black & white "photo" of a studio mic, with a light sweep across the grille.
+function micPhoto(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const g = ctx.createRadialGradient(x + w * 0.5, y + h * 0.35, 20, x + w * 0.5, y + h * 0.45, h * 0.9);
+  g.addColorStop(0, '#8a8a8a'); g.addColorStop(0.5, '#3a3a3a'); g.addColorStop(1, '#0d0d0d');
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  // soft studio light rays
+  ctx.save(); ctx.globalAlpha = 0.08; ctx.fillStyle = '#fff';
+  for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x + w * (0.1 + i * 0.22), y); ctx.lineTo(x + w * (0.2 + i * 0.22), y); ctx.lineTo(x + w * (0.6 + i * 0.1), y + h); ctx.lineTo(x + w * (0.45 + i * 0.1), y + h); ctx.fill(); }
+  ctx.restore();
+  const cx = x + w * 0.5, cy = y + h * 0.52, mw = w * 0.34, mh = h * 0.5;
+  ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = w * 0.045; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - mw * 0.75, cy - mh * 0.05); ctx.lineTo(cx - mw * 0.75, cy + mh * 0.38);
+  ctx.quadraticCurveTo(cx - mw * 0.75, cy + mh * 0.62, cx, cy + mh * 0.62);
+  ctx.quadraticCurveTo(cx + mw * 0.75, cy + mh * 0.62, cx + mw * 0.75, cy + mh * 0.38);
+  ctx.lineTo(cx + mw * 0.75, cy - mh * 0.05); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy + mh * 0.62); ctx.lineTo(cx, y + h + 10); ctx.stroke();
+  const hg = ctx.createLinearGradient(cx - mw / 2, 0, cx + mw / 2, 0);
+  hg.addColorStop(0, '#2a2a2a'); hg.addColorStop(0.35, '#d8d8d8'); hg.addColorStop(0.55, '#f4f4f4'); hg.addColorStop(1, '#3a3a3a');
+  ctx.beginPath(); ctx.roundRect(cx - mw / 2, cy - mh / 2, mw, mh, mw / 2); ctx.fillStyle = hg; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2;
+  for (let i = -20; i < 40; i++) { const yy = cy - mh / 2 + i * 9; ctx.beginPath(); ctx.moveTo(cx - mw, yy); ctx.lineTo(cx + mw, yy + 30); ctx.stroke(); }
+  for (let i = -20; i < 40; i++) { const yy = cy - mh / 2 + i * 9; ctx.beginPath(); ctx.moveTo(cx - mw, yy + 30); ctx.lineTo(cx + mw, yy); ctx.stroke(); }
+  // moving specular sweep
+  const sx = cx - mw + ((t * 0.55) % 1.6) * mw * 1.6;
+  const sg = ctx.createLinearGradient(sx - 40, 0, sx + 40, 0);
+  sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,0.55)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sg; ctx.fillRect(cx - mw, cy - mh, mw * 2, mh * 2);
+  ctx.restore();
+  ctx.fillStyle = '#151515'; ctx.fillRect(cx - mw / 2, cy + mh * 0.08, mw, mh * 0.1);
+  ctx.fillStyle = '#9a9a9a'; ctx.fillRect(cx - mw / 2, cy + mh * 0.08, mw, 3);
+  // on-air lamp
+  const on = 0.6 + 0.4 * Math.sin(t * 5);
+  ctx.save(); ctx.shadowColor = '#ff3b30'; ctx.shadowBlur = 24 * on; ctx.fillStyle = `rgba(255,59,48,${0.6 + 0.4 * on})`;
+  ctx.beginPath(); ctx.arc(cx, cy + mh * 0.13, 7, 0, 7); ctx.fill(); ctx.restore();
+  ctx.restore();
+}
+
+function blurred(px, fn) {
+  if (px < 0.3) { fn(); return; }
+  ctx.save(); ctx.filter = `blur(${px.toFixed(1)}px)`; fn(); ctx.restore();
+}
+
+function partial(str, k) { return str.slice(0, Math.ceil(clamp(k) * str.length)); }
+
+// ---------- scenes ----------
+function scene1(t) { // 0 – 2.229 : sparse build-up
+  bg(); cam(t, 0, B[6], { inZ: 1.12, rot: 0.03 });
+  blurred(10, () => {
+    ctx.globalAlpha = 0.85;
+    const x1 = lerp(-400, 600, eInOut(prog(t, 0.0, 2.2)));
+    label('podcast bareng khori', x1, 210, 44);
+    const x2 = lerp(2000, 1150, eOut(prog(t, B[2], 0.9)));
+    ctx.fillStyle = '#000'; ctx.fillRect(x2, 880, 420, 70);
+    ctx.globalAlpha = 1;
+  });
+  // REC indicator
+  { const a = clamp(t * 3); ctx.save(); ctx.globalAlpha = a;
+    const blink = 0.55 + 0.45 * Math.sin(t * 6);
+    ctx.save(); ctx.shadowColor = '#ff3b30'; ctx.shadowBlur = 18 * blink; ctx.fillStyle = `rgba(255,59,48,${0.5 + 0.5 * blink})`;
+    ctx.beginPath(); ctx.arc(150, 120, 14, 0, 7); ctx.fill(); ctx.restore();
+    setFont(34, 'InterBold'); ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const s = Math.floor(t), f = Math.floor((t - s) * 30);
+    ctx.fillText(`REC  00:00:0${s}:${String(f).padStart(2, '0')}`, 180, 122); ctx.restore(); }
+  // waveform growing from the centre
+  { const k = eOut(prog(t, 0.2, 1.4)); waveform(W / 2 - 520 * k, 760, 1040 * k, 160, t, 52, '#fff', 0.85 * k); }
+  if (t >= B[0]) { const k = eBack(prog(t, B[0], 0.35)); withT(1240, 520, -0.04, k, k, () => label('podcast..', 0, 0, 34)); }
+  if (t >= B[2]) {
+    const k = eExpo(prog(t, B[2], 0.6));
+    blurred((1 - k) * 18, () => { ctx.fillStyle = '#000'; ctx.fillRect(lerp(-500, 80, k), 140, 330, 74); });
+  }
+  if (t >= B[3]) { const k = eBack(prog(t, B[3], 0.35)); withT(1260, 580, -0.04, k, k, () => label('bareng', 0, 0, 30)); }
+  if (t >= B[4]) {
+    const k = eExpo(prog(t, B[4], 0.6));
+    const x = lerp(2300, 1080, k) - (t - B[4]) * 40;
+    blurred((1 - k) * 22, () => withT(x, 380, -0.07, 1, 1, () => { ctx.transform(1, 0, -0.08, 1, 0, 0); text3D('PORI', 0, 0, 230); }));
+  }
+  if (t >= B[5]) { const k = eBack(prog(t, B[5], 0.35)); withT(1100, 470, -0.07, k, k, () => label('pori..', 0, 0, 30)); }
+}
+
+function scene2(t) { // 2.229 – 4.365 : PORI title, letters pop in
+  bg(); cam(t, B[6], B[13]);
+  blurred(9, () => {
+    ctx.fillStyle = '#000'; ctx.fillRect(lerp(-80, 120, prog(t, B[6], 2)), 70, 420, 80);
+    label('ngobrol', lerp(80, 30, prog(t, B[6], 2)), 380, 40);
+    ctx.fillRect(lerp(1700, 1500, prog(t, B[6], 2)), 150, 300, 60);
+  });
+  const size = 400, baseY = 700;
+  setFont(size); const wT = ctx.measureText('PORI').width;
+  const baseX = W / 2 - wT / 2 + 40;
+  if (t >= B[8]) { const k = eBack(prog(t, B[8], 0.4)); starburst(baseX + wT + 30, baseY - size * 0.8, 120 * k, 12, t * 1.4, '#000'); }
+  withT(baseX, baseY, -0.06, 1, 1, () => {
+    ctx.transform(1, 0, -0.08, 1, 0, 0);
+    if (t >= B[8]) { const k = eOut(prog(t, B[8], 0.7)), s = 1 + k * 0.4;
+      ctx.save(); ctx.globalAlpha = 1 - k;
+      withT(wT / 2, -size * 0.36, 0, s, s, () => { setFont(size); ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText('PORI', 0, size * 0.36); });
+      ctx.restore(); }
+    letters('PORI', 0, 0, size, t, B[6] - 0.05, { st: 0.07, d: 0.65 }, (ch, dx) => text3D(ch, dx, 0, size));
+    if (t >= B[6]) { const k = eBack(prog(t, B[6] + 0.1, 0.35)); withT(10, 80, 0, k, k, () => label('podcast..', 0, 0, 30, { minW: 320 })); }
+    if (t >= B[7]) { const k = eBack(prog(t, B[7], 0.35)); withT(0, -size * 0.9, 0, k, k, () => label('pori..', 0, 0, 26)); }
+    if (t >= B[10]) { const k = eBack(prog(t, B[10], 0.35)); withT(wT - 130, -size * 0.9, 0, k, k, () => label('ep. 01', 0, 0, 26)); }
+  });
+  if (t >= B[9]) {
+    const k = prog(t, B[9], 0.55);
+    const caret = (Math.floor(t * 4) % 2 || k < 1) ? '|' : ' ';
+    label(partial('podcast bareng khori', k) + caret, 1080, 900, 54, { minW: 660 });
+  }
+  if (t >= B[11]) { const k = eBack(prog(t, B[11], 0.35)); withT(110, 660, -0.06, k, k, () => glowText('PODCAST', 0, 0, 80)); }
+}
+
+function scene4(t) { // 4.365 – 6.502 : collage build, one layer per beat, gentle parallax
+  bg(); cam(t, B[13], B[20], { inZ: 1.3, rot: 0.06 });
+  const dt = t - B[13];
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.rotate(-0.02); ctx.translate(-W / 2, -H / 2);
+  { const k = eExpo(prog(t, B[13], 0.5));
+    blurred((1 - k) * 20, () => {
+      withT(lerp(-900, -60, k) - dt * 25, 1060, -0.03, 1, 1, () => { ctx.fillStyle = '#000'; setFont(860); ctx.textAlign = 'left'; ctx.fillText('KHORI', 0, 0); });
+    });
+    const k2 = eExpo(prog(t, B[13] + 0.06, 0.5));
+    withT(lerp(2400, 0, k2) - dt * 60, 70, -0.035, 1, 1, () => {
+      ctx.fillStyle = '#fff'; ctx.fillRect(-100, 0, 2500, 240);
+      setFont(230); ctx.fillStyle = GREEN; ctx.textAlign = 'left'; ctx.fillText('PODCAST PODCAST PODCAST', 40, 222);
+      label('pod', 520, 70, 26); label('cast', 640, 70, 26);
+    });
+  }
+  if (t >= B[14]) { const k = eExpo(prog(t, B[14], 0.45)); const s = lerp(1.6, 1, k);
+    blurred((1 - k) * 16, () => withT(640 + dt * 18, 700, -0.05, s, s, () => { ctx.transform(1, 0, -0.1, 1, 0, 0); text3D('BARENG', 0, 0, 330, { face: '#fff', side: '#000' }); })); }
+  if (t >= B[15]) { const k = eBack(prog(t, B[15], 0.4));
+    starburst(1660, 300, 190 * k, 14, t * 1.2, '#000');
+    const k2 = eBack(prog(t, B[15] + 0.05, 0.4));
+    withT(1360 - dt * 12, 860, -0.1, k2, k2, () => {
+      setFont(200); const bw = ctx.measureText('KHORI').width;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12;
+      ctx.fillStyle = '#fff'; ctx.fillRect(-20, -210, bw + 50, 250); ctx.restore();
+      ctx.fillStyle = '#000'; ctx.textAlign = 'left'; ctx.fillText('KHORI', 10, 20);
+    });
+  }
+  if (t >= B[16]) { const k = eBack(prog(t, B[16], 0.4));
+    withT(380 + dt * 10, 990, -0.04, k, k, () => {
+      setFont(170, 'SerifBI'); ctx.textAlign = 'left';
+      ctx.lineWidth = 10; ctx.strokeStyle = '#000'; ctx.strokeText('bareng', 0, 0);
+      ctx.fillStyle = '#fff'; ctx.fillText('bareng', 0, 0);
+    });
+    starburst(950, 950, 70 * k, 9, -t * 1.6, '#000');
+  }
+  if (t >= B[17]) {
+    const k = eBack(prog(t, B[17], 0.35)); withT(1180, 395, -0.04, k, k, () => label('ep. 01', 0, 0, 34));
+    const k2 = eBack(prog(t, B[17] + 0.08, 0.35)); withT(250, 400, -0.04, k2, k2, () => label('bareng khori', 0, 0, 34));
+  }
+  if (t >= B[18]) { const k = eExpo(prog(t, B[18], 0.6));
+    withT(lerp(2300, 980, k) - dt * 30, 1065, -0.03, 1, 1, () => {
+      setFont(150); ctx.textAlign = 'left'; ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText('BARENG KHORI', 0, 0);
+    });
+  }
+  ctx.restore();
+}
+
+function scene5(t) { // 6.502 – 7.152 : black square that grows into the frame
+  bg(); cam(t, B[20], B[22], { noOut: true, inZ: 1.1, rot: 0.02 });
+  const k0 = eBack(prog(t, B[20], 0.3));
+  if (t < B[21]) {
+    const s = 56 * k0; withT(W / 2, H / 2, k0 * Math.PI / 2, 1, 1, () => { ctx.fillStyle = '#000'; ctx.fillRect(-s / 2, -s / 2, s, s); });
+    return;
+  }
+  const k = eExpo(prog(t, B[21], 0.45));
+  drawCard(t, lerp(0.09, 1, k), lerp(0, -0.05, k), k);
+}
+
+const CARD_W = 620, CARD_H = 760;
+function drawCard(t, s, rot, fill) {
+  withT(W / 2, H / 2 + 10, rot, s, s, () => {
+    const w = CARD_W, h = CARD_H;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 24;
+    ctx.fillStyle = '#000'; ctx.fillRect(-w / 2 - 50, -h / 2 - 50, w + 100, h + 100); ctx.restore();
+    if (fill <= 0) return;
+    ctx.globalAlpha = clamp(fill * 1.5);
+    ctx.fillStyle = '#fff'; ctx.fillRect(-w / 2 - 22, -h / 2 - 22, w + 44, h + 44);
+    ctx.fillStyle = GREEN; ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = '#000'; ctx.fillRect(-w / 2 + 50, -h / 2 + 60, w - 100, h - 150);
+    micPhoto(-w / 2 + 62, -h / 2 + 72, w - 124, h - 174, t);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function soundRings(cx, cy, t, t0) {
+  ctx.save(); ctx.strokeStyle = '#fff';
+  for (let i = 0; i < 5; i++) {
+    const p = ((t - t0) * 0.55 + i / 5) % 1;
+    if (t - t0 < i * 0.3) continue;
+    ctx.globalAlpha = (1 - p) * 0.35 * (0.6 + env(t) * 0.8);
+    ctx.lineWidth = 3 + (1 - p) * 6;
+    ctx.beginPath(); ctx.arc(cx, cy, 420 + p * 700, 0, 7); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function scene6(t) { // 7.152 – 9.265 : framed card with stacked title
+  bg(); cam(t, B[22], B[29], { noIn: true, outZ: 1.4 });
+  soundRings(W / 2, H / 2, t, B[22]);
+  withT(W / 2, H / 2, 0.06 - (t - B[22]) * 0.03, 1.15 + (t - B[22]) * 0.05, undefined, () => {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 70;
+    ctx.strokeRect(-560, -470, 1120, 940);
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.strokeRect(-860, -380, 300, 520); ctx.strokeRect(600, -200, 340, 600);
+  });
+  const s = 1 + eSine(prog(t, B[22], 2.1)) * 0.06;
+  const rot = lerp(-0.05, 0.02, eSine(prog(t, B[22], 2.1)));
+  drawCard(t, s, rot, 1);
+  withT(W / 2, H / 2 + 10, rot, s, s, () => {
+    const L = -CARD_W / 2 + 40, T = -CARD_H / 2;
+    { const k = eBack(prog(t, B[22], 0.4)); starburst(-CARD_W / 2 - 10, T + 70, 85 * k, 12, t * 1.0, '#000'); }
+    const line = (str, y, size, beat) => {
+      setFont(size); const fit = Math.min(size, size * (CARD_W - 90) / ctx.measureText(str).width);
+      ctx.save(); ctx.translate(L, y); ctx.rotate(-0.03);
+      letters(str, 0, 0, fit, t, beat, { st: 0.045, d: 0.55, rot: 0.15 }, (ch, dx) => text3D(ch, dx, 0, fit, { face: '#fff', side: '#000', depth: size * 0.06 }));
+      ctx.restore();
+    };
+    line('PODCAST,', T + 200, 150, B[22]);
+    line('BARENG', T + 340, 150, B[24]);
+    line('KHORI', T + 600, 260, B[26]);
+    if (t >= B[23]) { const k = eBack(prog(t, B[23], 0.35)); withT(L + 330, T + 70, -0.03, k, k, () => label('podcast..', 0, 0, 22)); }
+    if (t >= B[25]) { const k = eBack(prog(t, B[25], 0.45));
+      withT(CARD_W / 2 + 10, T + 330, 0.25 + Math.sin(t * 3) * 0.05, k * 0.45, undefined, () => {
+        bubblePath(300, 220, 70); ctx.lineWidth = 16; ctx.strokeStyle = '#fff'; ctx.stroke();
+      });
+    }
+  });
+}
+
+function scene7(t) { // 9.265 – 12 : glowing stacked tagline + speech bubble + waveform
+  bg(); cam(t, B[29], DURATION + 1, { inZ: 1.25, rot: 0.04 });
+  const x = 360, y0 = 420, size = 200, lh = 182;
+  const gs = 1 + (t - B[29]) * 0.012;
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(gs, gs); ctx.translate(-W / 2, -H / 2);
+  const word = (str, wx, wy, beat) => letters(str, wx, wy, size, t, beat, { st: 0.035, d: 0.5, rot: 0.12 }, (ch, dx) => glowText(ch, dx, 0, size));
+  word('NGOBROLIN', x, y0, B[29]);
+  word('APAPUN', x, y0 + lh, B[30]);
+  word('TANPA', x, y0 + lh * 2, B[31]);
+  setFont(size); const wT = ctx.measureText('TANPA ').width;
+  word('HENTI', x + wT, y0 + lh * 2, B[32]);
+  if (t >= B[33]) { const k = eBack(prog(t, B[33], 0.55)); bubble3D(1560, 540, k * 1.1, -0.12 + Math.sin(t * 2) * 0.04, t); }
+  if (t >= B[34]) { const k = eBack(prog(t, B[34], 0.4)); withT(x + 4, y0 + lh * 2 + 90, 0, k, k, () => label('podcast bareng khori', 0, 0, 34)); }
+  { const k = eOut(prog(t, B[29] + 0.3, 1.0)); waveform(x, y0 + lh * 2 + 200, 1180 * k, 90, t, 48, '#fff', 0.7 * k); }
+  ctx.restore();
+}
+
+// [start time, scene, how it enters]
+const S = [
+  [0, scene1, 'none'],
+  [B[6], scene2, 'zoom'],
+  [B[13], scene4, 'zoom'],
+  [B[20], scene5, 'fade'],
+  [B[22], scene6, 'cut'],
+  [B[29], scene7, 'zoom'],
+];
+const TR = 0.5;
+
+function drawScene(i, t, target) {
+  ctx = target.getContext('2d'); NOW = t;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.clearRect(0, 0, W, H);
+  S[i][1](t); ctx.restore();
+}
+function compose(t, dst) {
+  const d = dst.getContext('2d');
+  let j = -1;
+  for (let k = 1; k < S.length; k++) if (S[k][2] !== 'cut' && t >= S[k][0] - TR / 2 && t < S[k][0] + TR / 2) j = k;
+  if (j < 0) { let i = 0; for (let k = 0; k < S.length; k++) if (t >= S[k][0]) i = k; drawScene(i, t, bufB); d.drawImage(bufB, 0, 0); return; }
+  const p = eInOut(clamp((t - (S[j][0] - TR / 2)) / TR));
+  drawScene(j - 1, t, bufA); drawScene(j, t, bufB);
+  d.save(); d.fillStyle = GREEN; d.fillRect(0, 0, W, H);
+  if (S[j][2] === 'zoom') {
+    d.save(); d.globalAlpha = 1 - p; const za = 1 + p * 0.3; d.translate(W / 2, H / 2); d.scale(za, za); d.translate(-W / 2, -H / 2); d.drawImage(bufA, 0, 0); d.restore();
+    d.globalAlpha = p; const zb = 1.25 - p * 0.25; d.translate(W / 2, H / 2); d.scale(zb, zb); d.translate(-W / 2, -H / 2); d.drawImage(bufB, 0, 0);
+  } else { d.drawImage(bufA, 0, 0); d.globalAlpha = p; d.drawImage(bufB, 0, 0); }
+  d.restore();
+}
+
+function post(t) {
+  // light leak drifting across
+  octx.save(); octx.globalCompositeOperation = 'screen';
+  const lx = W * (0.5 + 0.45 * Math.sin(t * 0.35)), ly = H * (0.3 + 0.2 * Math.cos(t * 0.27));
+  const lg = octx.createRadialGradient(lx, ly, 0, lx, ly, W * 0.55);
+  lg.addColorStop(0, 'rgba(255,244,210,0.16)'); lg.addColorStop(1, 'rgba(255,244,210,0)');
+  octx.fillStyle = lg; octx.fillRect(0, 0, W, H); octx.restore();
+  // dust motes
+  octx.save();
+  for (const m of DUST) {
+    const x = (m.x + Math.sin(t * 0.6 + m.p) * 30 + t * m.v * 0.6) % W, y = (m.y - t * m.v + H * 4) % H;
+    octx.globalAlpha = 0.18 + 0.3 * m.z; octx.fillStyle = '#fff';
+    octx.beginPath(); octx.arc(x, y, m.s * (0.6 + m.z), 0, 7); octx.fill();
+  }
+  octx.restore();
+  // film grain
+  octx.save(); octx.globalAlpha = 0.06; octx.globalCompositeOperation = 'overlay';
+  octx.drawImage(grains[Math.floor(t * 24) % grains.length], 0, 0, W, H); octx.restore();
+  // vignette
+  const v = octx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.32)');
+  octx.fillStyle = v; octx.fillRect(0, 0, W, H);
+  // fade to black at the very end
+  const fb = eInOut(prog(t, 11.3, 0.7));
+  if (fb > 0) { octx.fillStyle = `rgba(0,0,0,${fb})`; octx.fillRect(0, 0, W, H); }
+}
+
+function render(t) {
+  // motion blur: average SUB sub-frames across the shutter
+  for (let s = 0; s < SUB; s++) {
+    compose(t + s * SHUTTER / SUB, frameBuf);
+    octx.globalAlpha = 1 / (s + 1); octx.drawImage(frameBuf, 0, 0);
+  }
+  octx.globalAlpha = 1;
+  post(t);
+}
+
+window.render = render;
+window.DURATION = DURATION;
+window.ready = document.fonts.load('100px Anton').then(() => document.fonts.load('40px InterBold'))
+  .then(() => document.fonts.load('100px SerifBI')).then(() => { render(0); return true; });
+
+if (!navigator.webdriver) {
+  window.ready.then(() => {
+    const start = performance.now();
+    (function loop() { render(((performance.now() - start) / 1000) % DURATION); requestAnimationFrame(loop); })();
+  });
+}
+</script>
+</body>
+</html>
